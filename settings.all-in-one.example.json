@@ -1,0 +1,30 @@
+{
+  "role": "combined",
+
+  "log_file": "surface.log",
+
+  "node_addr": "157.250.198.67:9253",
+  "tls_ca_file": "certs/node.crt",
+  "tls_skip_verify": false,
+
+  "proxy_listen": "127.0.0.1:9252",
+  "health_listen": "127.0.0.1:9292",
+
+  "client_key_file": "keys/client.key",
+  "aliases": {},
+
+  "identity_dir": "identity",
+  "hidden_services": [
+    { "alias": "blog", "identity_dir": "identity/blog", "virtual_port": 80, "target": "127.0.0.1:5000" },
+    { "alias": "api", "identity_dir": "identity/api", "virtual_port": 80, "target": "127.0.0.1:9000" }
+  ],
+  "heartbeat_seconds": 15,
+
+  "db_name": "surface.db",
+  "tunnel_listen": "0.0.0.0:9253",
+  "tls_cert_file": "certs/node.crt",
+  "tls_key_file": "certs/node.key",
+  "dns_servers": ["1.1.1.1:53", "8.8.8.8:53"],
+  "heartbeat_timeout_seconds": 45,
+  "allowed_agents": []
+}

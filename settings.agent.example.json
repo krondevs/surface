@@ -1,0 +1,13 @@
+{
+  "role": "agent",
+  "log_file": "surface-agent.log",
+  "node_addr": "203.0.113.10:9253",
+  "tls_ca_file": "certs/node.crt",
+  "tls_skip_verify": false,
+  "identity_dir": "identity",
+  "heartbeat_seconds": 15,
+  "hidden_services": [
+    { "alias": "blog", "identity_dir": "identity/blog", "virtual_port": 80, "target": "127.0.0.1:8085" },
+    { "alias": "api", "identity_dir": "identity/api", "virtual_port": 80, "target": "127.0.0.1:9000" }
+  ]
+}

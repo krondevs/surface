@@ -141,6 +141,7 @@ func (n *Node) handleTunnelConn(conn net.Conn) {
 			PublicKey: publicKey,
 			Name:      name,
 			Role:      "agent",
+			E2E:       reg.E2E,
 			Conn:      conn,
 			Mux:       mux,
 			CreatedAt: time.Now(),
@@ -192,12 +193,69 @@ func (n *Node) handleTunnelConn(conn net.Conn) {
 
 func (n *Node) handleRequestStream(stream net.Conn) {
 	defer stream.Close()
-	host, port, err := readRequestHeader(stream)
+	host, port, v2, err := readRequest(stream)
 	if err != nil {
 		return
 	}
-	upstream, err := n.DialTarget(host, port)
+	host = NormalizeHost(host)
+
+	if !v2 {
+		// Legacy v1 client: no metadata, no E2E. Clearnet keeps working; an
+		// old client talking to a new agent will fail the E2E handshake, so
+		// plaintext .surface traffic never reaches a service.
+		upstream, err := n.DialTarget(host, port)
+		if err != nil {
+			return
+		}
+		pipe(stream, upstream)
+		return
+	}
+
+	if IsSurfaceName(host) {
+		service, err := n.registry.Lookup(host, port)
+		if err != nil {
+			writeResponseHeader(stream, respNotFound, false, nil, 0)
+			return
+		}
+		session, ok := n.sessions.Get(service.SessionID)
+		if !ok {
+			writeResponseHeader(stream, respNotFound, false, nil, 0)
+			return
+		}
+		if !session.E2E {
+			writeResponseHeader(stream, respE2EUnavailable, false, nil, 0)
+			return
+		}
+		pub, err := ParsePublicKey(service.PublicKey)
+		if err != nil {
+			writeResponseHeader(stream, respBadRequest, false, nil, 0)
+			return
+		}
+		upstream, err := session.Mux.Open()
+		if err != nil {
+			writeResponseHeader(stream, respNotFound, false, nil, 0)
+			return
+		}
+		if err := writeVirtualPort(upstream, port); err != nil {
+			upstream.Close()
+			writeResponseHeader(stream, respBadRequest, false, nil, 0)
+			return
+		}
+		if err := writeResponseHeader(stream, respOK, true, pub, e2eVersion1); err != nil {
+			upstream.Close()
+			return
+		}
+		pipe(stream, upstream)
+		return
+	}
+
+	upstream, err := n.internet.DialTarget(host, port)
 	if err != nil {
+		writeResponseHeader(stream, respNotFound, false, nil, 0)
+		return
+	}
+	if err := writeResponseHeader(stream, respOK, false, nil, 0); err != nil {
+		upstream.Close()
 		return
 	}
 	pipe(stream, upstream)

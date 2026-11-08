@@ -36,6 +36,8 @@ type ServiceDeclaration struct {
 type Registration struct {
 	Name     string               `json:"name"`
 	Services []ServiceDeclaration `json:"services"`
+	E2E      bool                 `json:"e2e"`
+	Protocol int                  `json:"protocol"`
 }
 
 func yamuxConfig() *yamux.Config {
@@ -163,21 +165,7 @@ func writeRequestHeader(w io.Writer, host string, port int) error {
 }
 
 func readRequestHeader(r io.Reader) (string, int, error) {
-	var lenBuf [1]byte
-	if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
-		return "", 0, err
-	}
-	n := int(lenBuf[0])
-	if n == 0 {
-		return "", 0, errors.New("invalid host length")
-	}
-	buf := make([]byte, n+2)
-	if _, err := io.ReadFull(r, buf); err != nil {
-		return "", 0, err
-	}
-	host := string(buf[:n])
-	port := int(binary.BigEndian.Uint16(buf[n:]))
-	return host, port, nil
+	return readHostPort(r)
 }
 
 func writeVirtualPort(w io.Writer, port int) error {
@@ -202,7 +190,10 @@ func dialTLSAddr(s *Settings, addr string) (net.Conn, error) {
 		MinVersion: tls.VersionTLS12,
 		ServerName: hostOnly(addr),
 	}
-	if s.TLSSkipVerify {
+	if s.TLSSkipVerify || s.effectiveNodeAuth() == "none" {
+		// Zero-trust mode: the node is an untrusted relay. TLS is used only to
+		// encrypt the transport; data confidentiality comes from the end-to-end
+		// layer between client and agent.
 		cfg.InsecureSkipVerify = true
 	} else {
 		raw, err := trustedNodeCertBytesFor(s, addr)

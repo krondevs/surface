@@ -13,6 +13,7 @@ type Session struct {
 	PublicKey string
 	Name      string
 	Role      string
+	E2E       bool
 	Conn      net.Conn
 	Mux       *yamux.Session
 	CreatedAt time.Time

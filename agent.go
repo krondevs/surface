@@ -149,7 +149,7 @@ func agentSession(ctx context.Context, s *Settings, logger *log.Logger, priv ed2
 	if err := peerHandshake(conn, priv, connRegister, handshakeTimeout); err != nil {
 		return err
 	}
-	if err := writeRegistration(conn, Registration{Name: name, Services: declarations}); err != nil {
+	if err := writeRegistration(conn, Registration{Name: name, Services: declarations, E2E: true, Protocol: 2}); err != nil {
 		return err
 	}
 	mux, err := yamux.Server(conn, yamuxConfig())
@@ -168,11 +168,11 @@ func agentSession(ctx context.Context, s *Settings, logger *log.Logger, priv ed2
 		if err != nil {
 			return err
 		}
-		go agentServeStream(stream, targets)
+		go agentServeStream(stream, targets, priv, name)
 	}
 }
 
-func agentServeStream(stream net.Conn, targets map[int]string) {
+func agentServeStream(stream net.Conn, targets map[int]string, priv ed25519.PrivateKey, name string) {
 	defer stream.Close()
 	port, err := readVirtualPort(stream)
 	if err != nil {
@@ -182,9 +182,13 @@ func agentServeStream(stream net.Conn, targets map[int]string) {
 	if !ok {
 		return
 	}
+	secure, err := acceptE2E(stream, priv, name, port)
+	if err != nil {
+		return
+	}
 	conn, err := net.Dial("tcp", target)
 	if err != nil {
 		return
 	}
-	pipe(stream, conn)
+	pipe(secure, conn)
 }

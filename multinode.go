@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
+	"fmt"
 	"log"
 	"math/rand"
 	"net"
@@ -173,12 +174,48 @@ func (m *MultiNodeDialer) DialTarget(host string, port int) (net.Conn, error) {
 			lastErr = err
 			continue
 		}
-		if err := writeRequestHeader(stream, target, port); err != nil {
+		if err := writeRequestHeaderV2(stream, target, port); err != nil {
 			stream.Close()
 			lastErr = err
 			continue
 		}
-		return stream, nil
+		status, e2e, pub, version, err := readResponseHeader(stream)
+		if err != nil {
+			stream.Close()
+			lastErr = err
+			continue
+		}
+		if status != respOK {
+			stream.Close()
+			lastErr = fmt.Errorf("node %s: request failed with status %d", node.addr, status)
+			continue
+		}
+		if !IsSurfaceName(target) {
+			return stream, nil
+		}
+		// Zero-trust: a .surface stream must be end-to-end encrypted.
+		if !e2e {
+			stream.Close()
+			lastErr = fmt.Errorf("node %s did not offer end-to-end encryption for %s", node.addr, target)
+			continue
+		}
+		if version != e2eVersion1 {
+			stream.Close()
+			lastErr = fmt.Errorf("node %s offered unsupported e2e version %d", node.addr, version)
+			continue
+		}
+		if DeriveName(pub) != target {
+			stream.Close()
+			lastErr = fmt.Errorf("agent key does not match service name %s", target)
+			continue
+		}
+		secure, err := dialE2E(stream, pub, target, port)
+		if err != nil {
+			stream.Close()
+			lastErr = err
+			continue
+		}
+		return secure, nil
 	}
 
 	if lastErr == nil {

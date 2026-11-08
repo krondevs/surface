@@ -1,0 +1,281 @@
+2026/10/04 11:32:05 key authorized: ed25519:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa (role=client)
+2026/10/04 11:32:05 client public key: ed25519:aef522273cc7bbfd386c389218cd50f054a4256e9a76c0abd6b36458160e3e3b
+2026/10/04 11:32:05 client session ended: dial tcp 127.0.0.1:1: connect: connection refused
+2026/11/01 12:41:29 identity identity/blog -> pajke33n3fbzbpvy.surface (1 service(s))
+2026/11/01 12:41:29 client public key: ed25519:ff5819cc4edfb9ecb4beb448ee2a0afbccabdddde3b7a36d195d0b67305fc08d
+2026/11/01 12:41:29 agent[pajke33n3fbzbpvy.surface] target unreachable vport=80 -> 127.0.0.1:5000: dial tcp 127.0.0.1:5000: connect: connection refused
+2026/11/01 12:41:29 identity identity/api -> oai7kmexwyf5onle.surface (1 service(s))
+2026/11/01 12:41:29 agent[oai7kmexwyf5onle.surface] target unreachable vport=80 -> 127.0.0.1:9000: dial tcp 127.0.0.1:9000: connect: connection refused
+2026/11/01 12:41:29 connected to node 157.250.198.67:9253
+2026/11/01 12:41:29 registered oai7kmexwyf5onle.surface with 1 service(s)
+2026/11/01 12:41:29 registered pajke33n3fbzbpvy.surface with 1 service(s)
+2026/11/01 12:41:29 proxy listening on 127.0.0.1:9252
+2026/11/01 19:57:52 client public key: ed25519:ff5819cc4edfb9ecb4beb448ee2a0afbccabdddde3b7a36d195d0b67305fc08d
+2026/11/01 19:57:52 identity identity/blog -> pajke33n3fbzbpvy.surface (1 service(s))
+2026/11/01 19:57:52 agent[pajke33n3fbzbpvy.surface] target unreachable vport=80 -> 127.0.0.1:5000: dial tcp 127.0.0.1:5000: connect: connection refused
+2026/11/01 19:57:52 identity identity/api -> oai7kmexwyf5onle.surface (1 service(s))
+2026/11/01 19:57:52 agent[oai7kmexwyf5onle.surface] target unreachable vport=80 -> 127.0.0.1:9000: dial tcp 127.0.0.1:9000: connect: connection refused
+2026/11/01 19:57:52 registered pajke33n3fbzbpvy.surface with 1 service(s)
+2026/11/01 19:57:52 registered oai7kmexwyf5onle.surface with 1 service(s)
+2026/11/01 19:57:52 connected to node 157.250.198.67:9253
+2026/11/01 19:57:52 proxy listening on 127.0.0.1:9252
+2026/11/01 20:08:24 agent[oai7kmexwyf5onle.surface] session ended: session shutdown
+2026/11/01 20:08:24 agent[pajke33n3fbzbpvy.surface] session ended: session shutdown
+2026/11/07 19:54:32 client public key: ed25519:ff5819cc4edfb9ecb4beb448ee2a0afbccabdddde3b7a36d195d0b67305fc08d
+2026/11/07 19:54:32 identity identity/blog -> pajke33n3fbzbpvy.surface (1 service(s))
+2026/11/07 19:54:32 agent[pajke33n3fbzbpvy.surface] target unreachable vport=80 -> 127.0.0.1:5000: dial tcp 127.0.0.1:5000: connect: connection refused
+2026/11/07 19:54:32 identity identity/api -> oai7kmexwyf5onle.surface (1 service(s))
+2026/11/07 19:54:32 agent[oai7kmexwyf5onle.surface] target unreachable vport=80 -> 127.0.0.1:9000: dial tcp 127.0.0.1:9000: connect: connection refused
+2026/11/07 19:54:47 agent[pajke33n3fbzbpvy.surface] session ended: dial tcp 162.35.99.111:9253: i/o timeout
+2026/11/07 19:54:47 client session ended: dial tcp 162.35.99.111:9253: i/o timeout
+2026/11/07 19:54:47 agent[oai7kmexwyf5onle.surface] session ended: dial tcp 162.35.99.111:9253: i/o timeout
+2026/11/07 19:55:07 agent[pajke33n3fbzbpvy.surface] session ended: dial tcp 162.35.99.111:9253: i/o timeout
+2026/11/07 19:55:07 agent[oai7kmexwyf5onle.surface] session ended: dial tcp 162.35.99.111:9253: i/o timeout
+2026/11/07 19:55:07 client session ended: dial tcp 162.35.99.111:9253: i/o timeout
+2026/11/07 19:55:27 agent[oai7kmexwyf5onle.surface] session ended: dial tcp 162.35.99.111:9253: i/o timeout
+2026/11/07 19:55:27 agent[pajke33n3fbzbpvy.surface] session ended: dial tcp 162.35.99.111:9253: i/o timeout
+2026/11/07 19:55:27 client session ended: dial tcp 162.35.99.111:9253: i/o timeout
+2026/11/07 19:55:36 agent[oai7kmexwyf5onle.surface] session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 19:55:36 agent[pajke33n3fbzbpvy.surface] session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 19:55:36 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 19:55:41 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:55:41 client session ended: node public key does not match the pinned key
+2026/11/07 19:55:41 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:55:46 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:55:46 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:55:46 client session ended: node public key does not match the pinned key
+2026/11/07 19:55:51 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:55:51 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:55:51 client session ended: node public key does not match the pinned key
+2026/11/07 19:55:56 client public key: ed25519:ff5819cc4edfb9ecb4beb448ee2a0afbccabdddde3b7a36d195d0b67305fc08d
+2026/11/07 19:55:56 identity identity/blog -> pajke33n3fbzbpvy.surface (1 service(s))
+2026/11/07 19:55:56 agent[pajke33n3fbzbpvy.surface] target unreachable vport=80 -> 127.0.0.1:5000: dial tcp 127.0.0.1:5000: connect: connection refused
+2026/11/07 19:55:56 identity identity/api -> oai7kmexwyf5onle.surface (1 service(s))
+2026/11/07 19:55:56 agent[oai7kmexwyf5onle.surface] target unreachable vport=80 -> 127.0.0.1:9000: dial tcp 127.0.0.1:9000: connect: connection refused
+2026/11/07 19:55:56 client session ended: node public key does not match the pinned key
+2026/11/07 19:55:56 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:55:56 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:02 client session ended: node public key does not match the pinned key
+2026/11/07 19:56:02 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:02 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:07 client session ended: node public key does not match the pinned key
+2026/11/07 19:56:07 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:07 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:12 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:12 client session ended: node public key does not match the pinned key
+2026/11/07 19:56:12 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:17 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:17 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:17 client session ended: node public key does not match the pinned key
+2026/11/07 19:56:22 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:22 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:22 client session ended: node public key does not match the pinned key
+2026/11/07 19:56:28 agent[oai7kmexwyf5onle.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:56:28 client session ended: node public key does not match the pinned key
+2026/11/07 19:56:28 agent[pajke33n3fbzbpvy.surface] session ended: node public key does not match the pinned key
+2026/11/07 19:57:21 combined mode: no hidden_services configured, running client only
+2026/11/07 19:57:21 client public key: ed25519:ff5819cc4edfb9ecb4beb448ee2a0afbccabdddde3b7a36d195d0b67305fc08d
+2026/11/07 19:57:21 client session ended: node public key does not match the pinned key
+2026/11/07 19:57:26 client session ended: node public key does not match the pinned key
+2026/11/07 19:57:35 client public key: ed25519:ff5819cc4edfb9ecb4beb448ee2a0afbccabdddde3b7a36d195d0b67305fc08d
+2026/11/07 19:57:35 client session ended: node public key does not match the pinned key
+2026/11/07 19:57:40 client session ended: node public key does not match the pinned key
+2026/11/07 19:59:18 client public key: ed25519:ff5819cc4edfb9ecb4beb448ee2a0afbccabdddde3b7a36d195d0b67305fc08d
+2026/11/07 19:59:18 client session ended: node public key does not match the pinned key
+2026/11/07 19:59:23 combined mode: no hidden_services configured, running client only
+2026/11/07 19:59:23 client public key: ed25519:ff5819cc4edfb9ecb4beb448ee2a0afbccabdddde3b7a36d195d0b67305fc08d
+2026/11/07 19:59:23 client session ended: node public key does not match the pinned key
+2026/11/07 19:59:28 client session ended: node public key does not match the pinned key
+2026/11/07 19:59:33 client session ended: node public key does not match the pinned key
+2026/11/07 19:59:38 client session ended: node public key does not match the pinned key
+2026/11/07 19:59:44 client session ended: node public key does not match the pinned key
+2026/11/07 19:59:49 client session ended: node public key does not match the pinned key
+2026/11/07 19:59:54 client session ended: node public key does not match the pinned key
+2026/11/07 19:59:59 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:05 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:10 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:15 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:20 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:26 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:31 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:36 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:41 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:47 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:52 client session ended: node public key does not match the pinned key
+2026/11/07 20:00:57 client session ended: node public key does not match the pinned key
+2026/11/07 20:01:02 client session ended: node public key does not match the pinned key
+2026/11/07 20:01:08 client session ended: node public key does not match the pinned key
+2026/11/07 20:01:13 client session ended: node public key does not match the pinned key
+2026/11/07 20:01:18 client session ended: node public key does not match the pinned key
+2026/11/07 20:01:32 combined mode: no hidden_services configured, running client only
+2026/11/07 20:01:32 client public key: ed25519:ff5819cc4edfb9ecb4beb448ee2a0afbccabdddde3b7a36d195d0b67305fc08d
+2026/11/07 20:01:32 client session ended: node public key does not match the pinned key
+2026/11/07 20:01:37 client session ended: node public key does not match the pinned key
+2026/11/07 20:01:42 client session ended: node public key does not match the pinned key
+2026/11/07 20:01:48 client session ended: node public key does not match the pinned key
+2026/11/07 20:01:57 combined mode: no hidden_services configured, running client only
+2026/11/07 20:01:57 client public key: ed25519:004a0e4fe49175ac0dc1e26d5f20b6672e3650ce913db142b0b528c50b152119
+2026/11/07 20:01:57 client session ended: node public key does not match the pinned key
+2026/11/07 20:02:03 client session ended: node public key does not match the pinned key
+2026/11/07 20:02:10 client public key: ed25519:004a0e4fe49175ac0dc1e26d5f20b6672e3650ce913db142b0b528c50b152119
+2026/11/07 20:02:11 client session ended: node public key does not match the pinned key
+2026/11/07 20:02:16 client session ended: node public key does not match the pinned key
+2026/11/07 20:02:21 client session ended: node public key does not match the pinned key
+2026/11/07 20:02:26 client session ended: node public key does not match the pinned key
+2026/11/07 20:02:31 client session ended: node public key does not match the pinned key
+2026/11/07 20:02:37 client session ended: node public key does not match the pinned key
+2026/11/07 20:02:42 client session ended: node public key does not match the pinned key
+2026/11/07 20:02:47 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:02:52 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:02:57 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:03:02 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:08 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:13 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:18 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:23 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:29 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:34 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:39 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:44 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:49 client session ended: node public key does not match the pinned key
+2026/11/07 20:03:55 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:00 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:05 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:10 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:15 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:21 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:26 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:31 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:36 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:41 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:47 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:52 client session ended: node public key does not match the pinned key
+2026/11/07 20:04:57 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:02 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:07 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:13 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:18 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:23 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:28 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:33 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:39 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:44 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:49 client session ended: node public key does not match the pinned key
+2026/11/07 20:05:54 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:00 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:05 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:10 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:15 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:20 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:26 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:31 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:36 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:41 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:46 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:52 client session ended: node public key does not match the pinned key
+2026/11/07 20:06:57 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:07:02 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:07:07 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:07:12 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:07:17 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:07:22 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:07:27 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:07:32 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:07:38 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:07:43 client session ended: node public key does not match the pinned key
+2026/11/07 20:08:10 client public key: ed25519:7d615c3ff820f3d185ab12fa6dc103cfba62740913e2b952d7393d51a61109a6
+2026/11/07 20:08:10 client session ended: node public key does not match the pinned key
+2026/11/07 20:08:16 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:10 client public key: ed25519:7d615c3ff820f3d185ab12fa6dc103cfba62740913e2b952d7393d51a61109a6
+2026/11/07 20:09:10 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:15 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:20 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:26 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:31 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:36 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:41 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:46 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:52 client session ended: node public key does not match the pinned key
+2026/11/07 20:09:57 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:02 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:07 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:12 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:18 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:23 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:28 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:33 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:38 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:44 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:49 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:54 client session ended: node public key does not match the pinned key
+2026/11/07 20:10:59 client session ended: node public key does not match the pinned key
+2026/11/07 20:11:04 client session ended: node public key does not match the pinned key
+2026/11/07 20:11:11 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:11:16 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:11:21 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:11:26 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:11:31 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:11:36 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:13:02 combined mode: no hidden_services configured, running client only
+2026/11/07 20:13:02 client public key: ed25519:7d615c3ff820f3d185ab12fa6dc103cfba62740913e2b952d7393d51a61109a6
+2026/11/07 20:13:03 connected to node 162.35.99.111:9253
+2026/11/07 20:13:03 proxy listening on 127.0.0.1:9252
+2026/11/07 20:14:36 combined mode: no hidden_services configured, running client only
+2026/11/07 20:14:36 client public key: ed25519:7d615c3ff820f3d185ab12fa6dc103cfba62740913e2b952d7393d51a61109a6
+2026/11/07 20:14:37 connected to node 162.35.99.111:9253
+2026/11/07 20:14:37 proxy listening on 127.0.0.1:9252
+2026/11/07 20:16:09 combined mode: no hidden_services configured, running client only
+2026/11/07 20:16:09 client public key: ed25519:7d615c3ff820f3d185ab12fa6dc103cfba62740913e2b952d7393d51a61109a6
+2026/11/07 20:16:10 connected to node 162.35.99.111:9253
+2026/11/07 20:16:10 proxy listening on 127.0.0.1:9252
+2026/11/07 20:18:48 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:18:53 connected to node 162.35.99.111:9253
+2026/11/07 20:18:53 proxy listening on 127.0.0.1:9252
+2026/11/07 20:19:02 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:07 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:12 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:17 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:22 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:27 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:32 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:37 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:42 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:48 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:53 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:19:58 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:20:03 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:20:08 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:20:13 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:20:18 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:20:24 client session ended: dial tcp 162.35.99.111:9253: connect: connection refused
+2026/11/07 20:20:29 connected to node 162.35.99.111:9253
+2026/11/07 20:20:29 proxy listening on 127.0.0.1:9252
+2026/11/07 20:41:17 combined mode: no hidden_services configured, running client only
+2026/11/07 20:41:17 client public key: ed25519:7d615c3ff820f3d185ab12fa6dc103cfba62740913e2b952d7393d51a61109a6
+2026/11/07 20:41:17 node 161.129.68.197:9253 unavailable: open certs/node3.crt: no such file or directory
+2026/11/07 20:41:17 node 162.35.99.111:9253 unavailable: open certs/node1.crt: no such file or directory
+2026/11/07 20:41:17 node 157.250.198.67:9253 unavailable: open certs/node2.crt: no such file or directory
+2026/11/07 20:41:17 proxy listening on 127.0.0.1:9252
+2026/11/07 20:41:18 node 157.250.198.67:9253 unavailable: open certs/node2.crt: no such file or directory
+2026/11/07 20:41:18 node 161.129.68.197:9253 unavailable: open certs/node3.crt: no such file or directory
+2026/11/07 20:41:18 node 162.35.99.111:9253 unavailable: open certs/node1.crt: no such file or directory
+2026/11/07 20:41:20 node 162.35.99.111:9253 unavailable: open certs/node1.crt: no such file or directory
+2026/11/07 20:41:20 node 157.250.198.67:9253 unavailable: open certs/node2.crt: no such file or directory
+2026/11/07 20:41:20 node 161.129.68.197:9253 unavailable: open certs/node3.crt: no such file or directory
+2026/11/07 20:41:24 node 161.129.68.197:9253 unavailable: open certs/node3.crt: no such file or directory
+2026/11/07 20:41:24 node 162.35.99.111:9253 unavailable: open certs/node1.crt: no such file or directory
+2026/11/07 20:41:24 node 157.250.198.67:9253 unavailable: open certs/node2.crt: no such file or directory
+2026/11/07 20:41:32 node 157.250.198.67:9253 unavailable: open certs/node2.crt: no such file or directory
+2026/11/07 20:41:32 node 161.129.68.197:9253 unavailable: open certs/node3.crt: no such file or directory
+2026/11/07 20:41:32 node 162.35.99.111:9253 unavailable: open certs/node1.crt: no such file or directory
+2026/11/07 20:43:00 combined mode: no hidden_services configured, running client only
+2026/11/07 20:43:00 client public key: ed25519:7d615c3ff820f3d185ab12fa6dc103cfba62740913e2b952d7393d51a61109a6
+2026/11/07 20:43:00 proxy listening on 127.0.0.1:9252
+2026/11/07 20:43:00 node 157.250.198.67:9253 unavailable: node public key does not match any pinned key
+2026/11/07 20:43:00 connected to node 162.35.99.111:9253 (rtt=375ms)
+2026/11/07 20:43:01 node 157.250.198.67:9253 unavailable: node public key does not match any pinned key
+2026/11/07 20:43:03 node 157.250.198.67:9253 unavailable: node public key does not match any pinned key
+2026/11/07 20:43:03 node 161.129.68.197:9253 unavailable: node public key does not match any pinned key
+2026/11/07 20:43:05 node 161.129.68.197:9253 unavailable: node public key does not match any pinned key
+2026/11/07 20:43:07 node 157.250.198.67:9253 unavailable: node public key does not match any pinned key
+2026/11/07 20:43:08 node 161.129.68.197:9253 unavailable: node public key does not match any pinned key

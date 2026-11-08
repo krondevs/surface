@@ -12,8 +12,12 @@ the network gateway (on a VPS), the service publisher, and the local proxy for y
   **everything else** to the internet through your node.
 - Addresses are derived from an ed25519 key, so publishing a service requires no public IP, no
   port-forwarding, and no DNS.
-- There is **no onion routing**: it's a single hop. The node sees the traffic. Surface is about
-  *private reachability*, not anonymity.
+- **`.surface` traffic is end-to-end encrypted** between client and agent: the node only relays
+  ciphertext and cannot read the data. Nodes are untrusted by design, so anyone can run one without
+  distributing certificates.
+- There is **no onion routing**: it's a single hop, so the node still sees metadata (which service,
+  origin IP, timing, volume). Surface is about *private reachability and data confidentiality*, not
+  anonymity.
 
 > ⚠️ Surface is a young project. Review the [security model](#security-model) before exposing it.
 
@@ -24,9 +28,9 @@ the network gateway (on a VPS), the service publisher, and the local proxy for y
 ```mermaid
 flowchart LR
     B["Browser<br/>127.0.0.1:9252"] --> C["surface client"]
-    C -- "TLS + yamux<br/>127.0.0.1:9252 -> :9253" --> N["surface node<br/>(VPS)"]
+    C -- "TLS + yamux<br/>127.0.0.1:9252 -> :9253" --> N["surface node<br/>(untrusted relay)"]
     A["surface agent<br/>(service host)"] -- "reverse tunnel<br/>TLS + yamux" --> N
-    N -- "*.surface" --> A
+    C -. "E2E encrypted stream (client <-> agent)" .- A
     N -- "everything else" --> I["Internet"]
     A --> S["local service<br/>127.0.0.1:5000"]
 ```
@@ -35,9 +39,9 @@ flowchart LR
 
 | Role | Where it runs | What it does |
 | --- | --- | --- |
-| **node** | your VPS (public IP) | Directory + registry, internet exit, TLS tunnel listener on `:9253` |
-| **agent** | wherever the service runs | Opens a reverse tunnel, publishes `*.surface` names, heartbeats |
-| **client** | your computer / phone | Local SOCKS5/HTTP proxy on `127.0.0.1:9252`, forwards to the node |
+| **node** | your VPS (public IP) | Directory + registry, internet exit, TLS tunnel listener on `:9253`; relays `.surface` ciphertext |
+| **agent** | wherever the service runs | Opens a reverse tunnel, publishes `*.surface` names, terminates E2E encryption |
+| **client** | your computer / phone | Local SOCKS5/HTTP proxy on `127.0.0.1:9252`, encrypts `.surface` traffic E2E |
 | **combined** | default (no subcommand) | Runs **client + agent together** in one process, Tor-like |
 
 ### Default ports
@@ -61,8 +65,12 @@ flowchart LR
   process, each with its own key and ports.
 - **Multiple nodes per client/agent** with automatic failover and round-robin, latency, or random
   selection strategies.
-- **Embedded node certificate + public-key pinning**: clients/agents verify the node without a
-  download and without `tls_skip_verify`.
+- **End-to-end encryption for `.surface`**: Noise (X25519 + ChaCha20-Poly1305) between client and
+  agent, authenticated by the address itself. The node only relays ciphertext.
+- **Zero-trust nodes**: `node_auth: "none"` needs no certificates; anyone can run a node. Optional
+  `node_auth: "pinned"` keeps the old certificate-pinning model for closed networks.
+- **Embedded node certificate bundle**: when pinning is enabled, clients/agents verify the node
+  without a download and without `tls_skip_verify`.
 - **Client/agent authorization**: close the network to only the keys you approve.
 - **SQLite registry with WAL** (pure-Go driver), automatic migrations on startup.
 - **Optional upstream internet exit** (SOCKS5/HTTP, e.g. Tor) with remote DNS and optional direct fallback.
@@ -106,11 +114,10 @@ Settings → Network Settings → Manual proxy configuration:
 Now `http://example.com` goes out through your node, and
 `http://<id>.surface/` reaches your internal service.
 
-> The trusted node certificate bundle is embedded in the binary and verified by public-key pinning.
-> Bundles can contain several node certificates. If `tls_ca_file` is missing, the binary writes the
-> embedded bundle there automatically, and `settings.json` is regenerated with the default node list
-> when absent — so a single binary is enough to bootstrap. `tls_skip_verify` exists for testing only
-> — it disables node authentication.
+> `settings.json` is regenerated with the default node list when absent, so a single binary is enough
+> to bootstrap. The default config uses `node_auth: "none"`: no node certificates are needed because
+> `.surface` traffic is end-to-end encrypted. For a closed network, set `node_auth: "pinned"`; the
+> trusted certificate bundle is embedded in the binary and can also be extracted to `tls_ca_file`.
 
 ### 4. Android (Termux)
 
@@ -158,8 +165,9 @@ default — the CLI subcommand always wins. See
 | `node_strategy` | `round_robin` | Node selection: `round_robin`, `latency`, or `random`. |
 | `node_ca_files` | `{}` | Optional per-node certificate files (map of `addr -> cert file`). |
 | `proxy_listen` | `127.0.0.1:9252` | Local SOCKS5/HTTP proxy listen address |
-| `tls_ca_file` | `certs/node.crt` | Trusted node certificate(s); may contain a PEM bundle |
+| `tls_ca_file` | `certs/nodes.crt` | Trusted node certificate(s); may contain a PEM bundle |
 | `tls_skip_verify` | `false` | Disable node authentication (testing only) |
+| `node_auth` | `none` (generated) | `none` treats the node as an untrusted relay (TLS encryption only; E2E protects `.surface`). Legacy configs without this field use `pinned`. |
 | `client_key_file` | `keys/client.key` | Client ed25519 identity |
 | `aliases` | `{}` | Local `name.surface -> id.surface` aliases |
 | `identity_dir` | `identity` | Default agent identity directory |
@@ -287,19 +295,66 @@ the traffic it carries. What you get is redundancy, load distribution, and sever
 
 See [`settings.multi-node.example.json`](settings.multi-node.example.json).
 
+### Zero-trust nodes and end-to-end encryption
+
+For `.surface` traffic, the client and agent establish an authenticated **Noise** channel
+(`Noise_NK_25519_ChaChaPoly_BLAKE2s`) through the node:
+
+- The agent's X25519 key is derived deterministically from its ed25519 identity.
+- The client obtains the agent's ed25519 public key from the node, verifies
+  `DeriveName(pub) == name`, and only then completes the handshake.
+- The Noise prologue binds `version + name + port + agent key`, so a malicious relay cannot redirect
+  the stream to another service or port.
+- The agent requires E2E for `.surface`; there is no plaintext fallback. A relay cannot downgrade
+  the connection.
+- Data is framed with ChaCha20-Poly1305. The node only sees ciphertext.
+
+Because the node is only a relay, node authentication is optional:
+
+```json
+{
+  "node_auth": "none"
+}
+```
+
+With `node_auth: "none"`, clients and agents do not need `certs/node.crt`, and anyone can run a node.
+TLS is still used between client/agent and the node to encrypt the transport, but it is not trusted
+for data confidentiality. Set `node_auth: "pinned"` to restore certificate pinning for a closed
+network.
+
+**Scope and limits**
+
+- `.surface`: the node cannot read the content (E2E), only metadata (service name, IPs, timing,
+  volume).
+- Clearnet HTTPS: the node cannot read the content (TLS to the destination), only metadata.
+- Clearnet HTTP: **the node can read and modify everything**. Use HTTPS, or route clearnet outside
+  the node (direct or via Tor), if that matters.
+- This is still single-hop: it provides data confidentiality against the relay, not anonymity.
+
+**Compatibility**
+
+Protocol v2 is required for `.surface` E2E. New clients/agents require new nodes. Legacy v1 clients
+still work for clearnet through a new node, but cannot access `.surface` services (they fail closed).
+
 ---
 
 ## Security model
 
-- **The node is trusted.** There is no onion routing; the node terminates the tunnel and sees the
-  plaintext of `.surface` traffic (use HTTPS on your services if that matters).
-- **`certs/node.key` is the crown jewel.** Keep it secret (permissions `0600`, encrypted backup,
-  never in the repo or in distributed binaries). If it leaks, regenerate it and rebuild/redistribute
-  client and agent binaries.
-- **`certs/node.crt` is public** and safe to share/distribute. Clients pin its public key, so a copy
-  of the certificate alone cannot be used to impersonate the node.
-- **Changing the node IP** does not break anything as long as you move `node.crt` + `node.key` along:
-  only `node_addr` (ideally a DNS name) needs updating. Identities are pinned by key, not by IP.
+- **The node is untrusted for `.surface` data.** The client and agent run an authenticated Noise
+  channel through the node; the node sees only ciphertext. It still sees metadata (service name,
+  origin/destination IPs, timing, volume) and can deny service or drop connections.
+- **Node certificates are optional.** With `node_auth: "none"`, `certs/node.crt`/`node.key` are not
+  distributed and any node can be used. With `node_auth: "pinned"`, clients pin the node's public key,
+  so a copy of the certificate alone cannot impersonate the node.
+- **`certs/node.key` matters only in `pinned` mode.** In zero-trust mode the node's TLS key protects
+  transport only, not the data.
+- **Agent identity is the crown jewel.** `identity_dir/secret.key` (ed25519) authenticates the
+  `.surface` name and derives the E2E key. Losing it changes the address; leaking it lets someone
+  impersonate the service.
+- **Clearnet content** is protected only by HTTPS. Plain HTTP through the node is readable and
+  modifiable by the node operator.
+- **Changing the node IP** is harmless in `node_auth: "none"` mode. In `pinned` mode, keep
+  `node.crt` + `node.key` with the node; only `node_addr`/`node_addrs` need updating.
 - **TCP only.** The proxy implements SOCKS5 CONNECT and HTTP CONNECT/absolute-URI. UDP/QUIC is not
   supported.
 - **Close the network** by authorizing keys with `surface node allow ... --role agent|client`.
@@ -333,8 +388,9 @@ go test ./...
 ```
 
 Tests cover the registry, ed25519 name derivation, certificate pinning, client authorization,
-multi-identity agents, and an end-to-end tunnel (node + agent + client) using in-memory HTTP
-services.
+multi-identity agents, multi-node selection/failover, ed25519→X25519 conversion, Noise E2E
+confidentiality (a relay only sees ciphertext), prologue/agent-key mismatch detection, v1 clearnet
+compatibility, and an end-to-end tunnel (node + agent + client) with in-memory HTTP services.
 
 ---
 
@@ -348,12 +404,14 @@ structs.go db.go     GORM models + SQLite (WAL) setup and migrations
 registry.go          service/key registry over GORM
 identity.go cert.go  ed25519 identities, derived names, certificate pinning
 tunnel.go sessions.go TLS + yamux transport, handshake, session manager
+protocol.go         stream protocol v2 (request/response metadata)
+e2e.go              Noise E2E, ed25519↔X25519, AEAD framing
 multinode.go        multi-node pool, selection strategies, failover
 node.go              node role: listener, routing, internet exit
 agent.go             agent role: identities, registration, reverse tunnels
 client.go proxy.go socks5.go httpproxy.go exit.go  local proxy and forwarding
 health.go assets.go  health endpoint and embedded assets
-surface_test.go      unit + end-to-end tests
+surface_test.go e2e_test.go  unit, end-to-end and crypto tests
 install/termux/      Termux installer (install.sh, start.sh, uninstall.sh)
 ```
 
@@ -362,8 +420,9 @@ install/termux/      Termux installer (install.sh, start.sh, uninstall.sh)
 ## Roadmap
 
 - UDP ASSOCIATE (QUIC and UDP services).
-- Multiple trusted node public keys for zero-rebuild rotation.
-- Optional node-signed handshake (app-layer node authentication).
+- Open node discovery (DNS seeds or DHT) so nodes can be used without a fixed list.
+- Optional per-service client authorization inside the E2E channel.
+- Padding / traffic shaping and multi-hop routing for metadata protection.
 - Standalone DNS responder for `.surface` inside a VPN.
 
 ---

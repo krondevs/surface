@@ -37,6 +37,7 @@ type Settings struct {
 	NodeCAFiles     map[string]string `json:"node_ca_files"`
 	TLSCAFile       string            `json:"tls_ca_file"`
 	TLSSkipVerify   bool              `json:"tls_skip_verify"`
+	NodeAuth        string            `json:"node_auth"`
 	IdentityDir     string            `json:"identity_dir"`
 	HiddenServices  []HiddenService   `json:"hidden_services"`
 	HeartbeatSecond int               `json:"heartbeat_seconds"`
@@ -59,6 +60,7 @@ func defaultSettings() *Settings {
 		HeartbeatSecond:         15,
 		ClientKeyFile:           "keys/client.key",
 		Aliases:                 map[string]string{},
+		NodeAuth:                "pinned",
 	}
 }
 
@@ -102,6 +104,9 @@ func (s *Settings) applyDefaults() {
 	}
 	if s.Aliases == nil {
 		s.Aliases = map[string]string{}
+	}
+	if s.NodeAuth == "" {
+		s.NodeAuth = d.NodeAuth
 	}
 }
 
@@ -157,6 +162,15 @@ func (s *Settings) effectiveNodeStrategy() string {
 	}
 }
 
+// effectiveNodeAuth returns the node authentication mode.
+// "none" means the node is treated as an untrusted relay (TLS encryption only).
+func (s *Settings) effectiveNodeAuth() string {
+	if strings.ToLower(strings.TrimSpace(s.NodeAuth)) == "none" {
+		return "none"
+	}
+	return "pinned"
+}
+
 // validate checks for configuration errors.
 func (s *Settings) validate() error {
 	strategy := strings.ToLower(strings.TrimSpace(s.NodeStrategy))
@@ -165,6 +179,12 @@ func (s *Settings) validate() error {
 		// ok
 	default:
 		return fmt.Errorf("unknown node_strategy %q (use round_robin, latency, or random)", s.NodeStrategy)
+	}
+	switch strings.ToLower(strings.TrimSpace(s.NodeAuth)) {
+	case "", "pinned", "none":
+		// ok
+	default:
+		return fmt.Errorf("unknown node_auth %q (use pinned or none)", s.NodeAuth)
 	}
 	return nil
 }

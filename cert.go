@@ -116,6 +116,9 @@ func ensureClientCert(s *Settings) error {
 	if s.Role != "client" && s.Role != "agent" && s.Role != roleCombined {
 		return nil
 	}
+	if s.effectiveNodeAuth() == "none" {
+		return nil
+	}
 	if s.TLSCAFile == "" || fileExists(s.TLSCAFile) {
 		return nil
 	}

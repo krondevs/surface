@@ -80,6 +80,22 @@ flowchart LR
 
 ## Quick start
 
+## Instalación rápida en Android (Termux)
+
+Copia y pega este comando en Termux:
+
+```bash
+pkg install -y curl && curl -fsSL https://github.com/krondevs/surface/releases/download/v1.0.0/install-client.sh | bash
+```
+
+El instalador detecta la arquitectura del dispositivo (`arm64`, `armv7`, `x86_64`, `i386`,
+`riscv64`), descarga el binario correspondiente del release `v1.0.0`, verifica su SHA-256,
+configura el cliente zero-trust, instala el autostart de Termux:Boot y arranca el proxy local.
+
+- Proxy: **SOCKS5 `127.0.0.1:9252`** — activa **"Proxy DNS when using SOCKS v5"** en el navegador.
+- Log: `tail -f ~/.surface/surface.log`
+- Actualizar o reinstalar: vuelve a ejecutar el mismo comando.
+
 ### 1. Node on your VPS
 
 Generate a config, then run the node:
@@ -121,15 +137,27 @@ Now `http://example.com` goes out through your node, and
 
 ### 4. Android (Termux)
 
-A self-contained installer downloads the `linux/arm64` binary, verifies its SHA-256, writes the
-config, sets up `termux-wake-lock` and `Termux:Boot` autostart, and starts the client:
+The installer detects the device architecture (`aarch64` → arm64, `armv7l` → armv7, `x86_64` →
+amd64, `i686` → 386, `riscv64`), downloads the matching binary from the GitHub release, verifies its
+SHA-256, writes a zero-trust client config (`node_auth: "none"`), sets up `termux-wake-lock` and
+`Termux:Boot` autostart, and starts the client:
 
 ```bash
-pkg install -y curl && curl -fsSL https://YOUR_HOST/surface/install.sh -o ~/surface-install.sh && bash ~/surface-install.sh
+pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/krondevs/surface/main/install/termux/install-client.sh -o ~/surface-install.sh && bash ~/surface-install.sh
 ```
 
-Host `surface` (the arm64 binary), `SHA256SUMS`, and `install.sh` under the URL in
-`install/termux/install.sh`.
+Or run it directly without saving a file:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/krondevs/surface/main/install/termux/install-client.sh | bash
+```
+
+Useful options: `--nodes "vps1:9253,vps2:9253"`, `--proxy-listen 127.0.0.1:9252`,
+`--reset-config`, `--no-start`, `--no-boot`, `--version v1.0.0`. The script verifies the download
+against the GitHub API digest or the built-in v1.0.0 checksums.
+
+For self-hosted releases, `install/termux/install.sh` still supports a custom `SURFACE_BASE_URL` and
+`surface`/`SHA256SUMS` layout.
 
 ---
 
@@ -372,6 +400,16 @@ GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -o dist/surface-linux-arm64 .
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o dist/surface-windows-amd64.exe .
 GOOS=windows GOARCH=386   CGO_ENABLED=0 go build -o dist/surface-windows-386.exe .
 ```
+
+Or build the full matrix (Linux, Windows, macOS, BSD; amd64/arm64/armv7/386/ppc64le/s390x/riscv64)
+plus `SHA256SUMS` in one step:
+
+```bash
+./scripts/build.sh --clean --termux-alias
+```
+
+`--termux-alias` also creates `dist/surface` from the `linux/arm64` build, which is the asset the
+Termux installer expects. Use `SURFACE_TARGETS="linux/amd64 windows/amd64"` to build a subset.
 
 A [goreleaser](https://goreleaser.com) configuration is provided (`.goreleaser.yaml`).
 

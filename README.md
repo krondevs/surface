@@ -137,24 +137,33 @@ Now `http://example.com` goes out through your node, and
 
 ### 4. Android (Termux)
 
-The installer detects the device architecture (`aarch64` → arm64, `armv7l` → armv7, `x86_64` →
-amd64, `i686` → 386, `riscv64`), downloads the matching binary from the GitHub release, verifies its
-SHA-256, writes a zero-trust client config (`node_auth: "none"`), sets up `termux-wake-lock` and
-`Termux:Boot` autostart, and starts the client:
+The installer detects the device architecture, downloads the matching Android build from the GitHub
+release (`surface-android-arm64`), verifies its SHA-256, writes a zero-trust client config
+(`node_auth: "none"`), sets up `termux-wake-lock` and leaves the client **running in the foreground**.
+The user only pastes one command:
 
 ```bash
-pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/krondevs/surface/main/install/termux/install-client.sh -o ~/surface-install.sh && bash ~/surface-install.sh
+pkg install -y curl && curl -fsSL https://github.com/krondevs/surface/releases/download/v1.0.0/install-client.sh | bash
 ```
 
-Or run it directly without saving a file:
+The command stays running and shows the proxy logs; press **Ctrl+C** to stop. To install and run it
+detached instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/krondevs/surface/main/install/termux/install-client.sh | bash
+curl -fsSL https://github.com/krondevs/surface/releases/download/v1.0.0/install-client.sh -o ~/install-client.sh
+bash ~/install-client.sh --background
 ```
+
+> The current release ships an **arm64** Android binary (PIE, `/system/bin/linker64`). Devices with
+> armv7 or x86 Termux need a build with the Android NDK / cgo.
+>
+> To keep the client alive in the background: set Termux's battery usage to **Unrestricted** in
+> Android settings and install/open the **Termux:Boot** app.
 
 Useful options: `--nodes "vps1:9253,vps2:9253"`, `--proxy-listen 127.0.0.1:9252`,
-`--reset-config`, `--no-start`, `--no-boot`, `--version v1.0.0`. The script verifies the download
-against the GitHub API digest or the built-in v1.0.0 checksums.
+`--reset-config`, `--no-start`, `--background`, `--no-boot`, `--version v1.0.0`. The script verifies
+the download against the release `SHA256SUMS`, the GitHub API digest, or the built-in v1.0.0
+checksums.
 
 For self-hosted releases, `install/termux/install.sh` still supports a custom `SURFACE_BASE_URL` and
 `surface`/`SHA256SUMS` layout.
@@ -408,8 +417,9 @@ plus `SHA256SUMS` in one step:
 ./scripts/build.sh --clean --termux-alias
 ```
 
-`--termux-alias` also creates `dist/surface` from the `linux/arm64` build, which is the asset the
-Termux installer expects. Use `SURFACE_TARGETS="linux/amd64 windows/amd64"` to build a subset.
+`--termux-alias` also creates `dist/surface` from the `android/arm64` build, which is the asset the
+older self-hosted Termux installer expects. Use `SURFACE_TARGETS="linux/amd64 windows/amd64"` to
+build a subset.
 
 A [goreleaser](https://goreleaser.com) configuration is provided (`.goreleaser.yaml`).
 

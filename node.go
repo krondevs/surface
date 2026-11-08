@@ -34,14 +34,19 @@ func runNode(ctx context.Context, s *Settings, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
+	internet, err := NewInternetDialer(s.DNServers, s.ExitProxy, s.ExitProxyFallbackDirect, logger)
+	if err != nil {
+		return err
+	}
 	node := &Node{
 		settings: s,
 		db:       db,
 		registry: NewRegistry(db),
 		sessions: NewSessionManager(),
-		internet: NewInternetDialer(s.DNServers),
+		internet: internet,
 		logger:   logger,
 	}
+	logger.Printf("internet exit: %s", internet.ExitDescription())
 	if err := ensureTLSCert(s.TLSCertFile, s.TLSKeyFile); err != nil {
 		return err
 	}

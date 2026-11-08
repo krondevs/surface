@@ -3,33 +3,10 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"errors"
 	"log"
-	"net"
 	"time"
-
-	"github.com/hashicorp/yamux"
 )
-
-type TunnelDialer struct {
-	mux     *yamux.Session
-	aliases map[string]string
-}
-
-func (t *TunnelDialer) DialTarget(host string, port int) (net.Conn, error) {
-	target := NormalizeHost(host)
-	if mapped, ok := t.aliases[target]; ok {
-		target = NormalizeHost(mapped)
-	}
-	stream, err := t.mux.Open()
-	if err != nil {
-		return nil, err
-	}
-	if err := writeRequestHeader(stream, target, port); err != nil {
-		stream.Close()
-		return nil, err
-	}
-	return stream, nil
-}
 
 func runClient(ctx context.Context, s *Settings, logger *log.Logger) error {
 	if err := ensureClientCert(s); err != nil {
@@ -58,29 +35,24 @@ func runClient(ctx context.Context, s *Settings, logger *log.Logger) error {
 }
 
 func clientSession(ctx context.Context, s *Settings, logger *log.Logger, priv ed25519.PrivateKey) error {
-	conn, err := dialTLS(s)
-	if err != nil {
-		return err
+	if len(s.effectiveNodeAddrs()) == 0 {
+		return errors.New("client requires node_addr or node_addrs")
 	}
-	defer conn.Close()
 
-	if err := peerHandshake(conn, priv, connRequest, handshakeTimeout); err != nil {
-		return err
-	}
-	mux, err := yamux.Client(conn, yamuxConfig())
-	if err != nil {
-		return err
-	}
-	logger.Printf("connected to node %s", s.NodeAddr)
+	dialer := NewMultiNodeDialer(s, priv, logger)
 
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	dialerDone := make(chan struct{})
 	go func() {
-		<-mux.CloseChan()
-		cancel()
+		defer close(dialerDone)
+		dialer.Run(sessionCtx)
 	}()
 
-	dialer := &TunnelDialer{mux: mux, aliases: s.Aliases}
 	proxy := NewProxyServer(s.ProxyListen, dialer, logger)
-	return proxy.Start(sessionCtx)
+	err := proxy.Start(sessionCtx)
+	cancel()
+	<-dialerDone
+	return err
 }

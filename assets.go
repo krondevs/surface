@@ -7,3 +7,6 @@ var defaultSettingsJSON []byte
 
 //go:embed certs/node.crt
 var embeddedNodeCert []byte
+
+//go:embed certs/nodes.crt
+var embeddedNodeCerts []byte

@@ -19,12 +19,43 @@ func parseCertificatePEM(raw []byte) (*x509.Certificate, error) {
 	return x509.ParseCertificate(block.Bytes)
 }
 
+// parseCertificatesPEM decodes all CERTIFICATE blocks in a PEM bundle.
+func parseCertificatesPEM(raw []byte) ([]*x509.Certificate, error) {
+	var certs []*x509.Certificate
+	rest := raw
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		certs = append(certs, cert)
+	}
+	if len(certs) == 0 {
+		return nil, errors.New("no certificates found in pem")
+	}
+	return certs, nil
+}
+
 func pinnedKeyFingerprint(cert *x509.Certificate) []byte {
 	sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
 	return sum[:]
 }
 
 func verifyPinnedCertificate(pinned []byte) func([][]byte, [][]*x509.Certificate) error {
+	return verifyPinnedCertificateAny([][]byte{pinned})
+}
+
+// verifyPinnedCertificateAny returns a TLS verification function that accepts
+// a peer certificate matching any of the provided pinned fingerprints.
+func verifyPinnedCertificateAny(pins [][]byte) func([][]byte, [][]*x509.Certificate) error {
 	return func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 		if len(rawCerts) == 0 {
 			return errors.New("no peer certificate presented")
@@ -34,11 +65,22 @@ func verifyPinnedCertificate(pinned []byte) func([][]byte, [][]*x509.Certificate
 			return err
 		}
 		sum := sha256.Sum256(leaf.RawSubjectPublicKeyInfo)
-		if subtle.ConstantTimeCompare(sum[:], pinned) != 1 {
-			return errors.New("node public key does not match the pinned key")
+		for _, pinned := range pins {
+			if subtle.ConstantTimeCompare(sum[:], pinned) == 1 {
+				return nil
+			}
 		}
-		return nil
+		return errors.New("node public key does not match any pinned key")
 	}
+}
+
+// embeddedTrustedCertBytes returns the embedded trust bundle, falling back to
+// the single embedded node certificate for older builds.
+func embeddedTrustedCertBytes() []byte {
+	if len(embeddedNodeCerts) > 0 {
+		return embeddedNodeCerts
+	}
+	return embeddedNodeCert
 }
 
 func trustedNodeCertBytes(s *Settings) ([]byte, error) {
@@ -49,10 +91,25 @@ func trustedNodeCertBytes(s *Settings) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if len(embeddedNodeCert) > 0 {
-		return embeddedNodeCert, nil
+	if raw := embeddedTrustedCertBytes(); len(raw) > 0 {
+		return raw, nil
 	}
 	return nil, errors.New("no trusted node certificate available")
+}
+
+// trustedNodeCertBytesFor returns the PEM bytes for a specific node address.
+// It checks NodeCAFiles[addr] first, then falls back to the shared TLSCAFile or embedded cert.
+func trustedNodeCertBytesFor(s *Settings, addr string) ([]byte, error) {
+	if s.NodeCAFiles != nil {
+		if file := s.NodeCAFiles[addr]; file != "" {
+			raw, err := os.ReadFile(file)
+			if err != nil {
+				return nil, err
+			}
+			return raw, nil
+		}
+	}
+	return trustedNodeCertBytes(s)
 }
 
 func ensureClientCert(s *Settings) error {
@@ -62,7 +119,8 @@ func ensureClientCert(s *Settings) error {
 	if s.TLSCAFile == "" || fileExists(s.TLSCAFile) {
 		return nil
 	}
-	if len(embeddedNodeCert) == 0 {
+	raw := embeddedTrustedCertBytes()
+	if len(raw) == 0 {
 		return fmt.Errorf("tls_ca_file %q not found and no embedded certificate", s.TLSCAFile)
 	}
 	if dir := filepath.Dir(s.TLSCAFile); dir != "." && dir != "" {
@@ -70,5 +128,5 @@ func ensureClientCert(s *Settings) error {
 			return err
 		}
 	}
-	return os.WriteFile(s.TLSCAFile, embeddedNodeCert, 0o644)
+	return os.WriteFile(s.TLSCAFile, raw, 0o644)
 }

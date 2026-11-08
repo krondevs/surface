@@ -94,14 +94,31 @@ func runAgent(ctx context.Context, s *Settings, logger *log.Logger) error {
 }
 
 func runAgentIdentity(ctx context.Context, s *Settings, logger *log.Logger, identity *agentIdentity) {
+	addrs := s.effectiveNodeAddrs()
+	if len(addrs) == 0 {
+		logger.Printf("agent[%s] no node addresses configured", identity.name)
+		return
+	}
+	var wg sync.WaitGroup
+	for _, addr := range addrs {
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			agentNodeLoop(ctx, s, logger, identity, addr)
+		}(addr)
+	}
+	wg.Wait()
+}
+
+func agentNodeLoop(ctx context.Context, s *Settings, logger *log.Logger, identity *agentIdentity, addr string) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
-		if err := agentSession(ctx, s, logger, identity.priv, identity.name, identity.declarations, identity.targets); err != nil {
-			logger.Printf("agent[%s] session ended: %v", identity.name, err)
+		if err := agentSession(ctx, s, logger, identity.priv, identity.name, identity.declarations, identity.targets, addr); err != nil {
+			logger.Printf("agent[%s] node %s session ended: %v", identity.name, addr, err)
 		}
 		select {
 		case <-ctx.Done():
@@ -122,8 +139,8 @@ func checkTargets(logger *log.Logger, identity *agentIdentity) {
 	}
 }
 
-func agentSession(ctx context.Context, s *Settings, logger *log.Logger, priv ed25519.PrivateKey, name string, declarations []ServiceDeclaration, targets map[int]string) error {
-	conn, err := dialTLS(s)
+func agentSession(ctx context.Context, s *Settings, logger *log.Logger, priv ed25519.PrivateKey, name string, declarations []ServiceDeclaration, targets map[int]string, addr string) error {
+	conn, err := dialTLSAddr(s, addr)
 	if err != nil {
 		return err
 	}
@@ -139,7 +156,7 @@ func agentSession(ctx context.Context, s *Settings, logger *log.Logger, priv ed2
 	if err != nil {
 		return err
 	}
-	logger.Printf("registered %s with %d service(s)", name, len(declarations))
+	logger.Printf("registered %s with %d service(s) on %s", name, len(declarations), addr)
 
 	go func() {
 		<-ctx.Done()

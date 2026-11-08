@@ -59,10 +59,13 @@ flowchart LR
   name squatting.
 - **Multiple identities per agent** (torrc-like): publish several `.surface` addresses from one
   process, each with its own key and ports.
+- **Multiple nodes per client/agent** with automatic failover and round-robin, latency, or random
+  selection strategies.
 - **Embedded node certificate + public-key pinning**: clients/agents verify the node without a
   download and without `tls_skip_verify`.
 - **Client/agent authorization**: close the network to only the keys you approve.
 - **SQLite registry with WAL** (pure-Go driver), automatic migrations on startup.
+- **Optional upstream internet exit** (SOCKS5/HTTP, e.g. Tor) with remote DNS and optional direct fallback.
 - **Tor-like default**: run with no subcommand to get client + agent simultaneously.
 
 ---
@@ -103,9 +106,11 @@ Settings → Network Settings → Manual proxy configuration:
 Now `http://example.com` goes out through your node, and
 `http://<id>.surface/` reaches your internal service.
 
-> The node certificate is embedded in the binary and verified by public-key pinning. If you keep
-> external certs, point `tls_ca_file` at the node's `node.crt`. `tls_skip_verify` exists for testing
-> only — it disables node authentication.
+> The trusted node certificate bundle is embedded in the binary and verified by public-key pinning.
+> Bundles can contain several node certificates. If `tls_ca_file` is missing, the binary writes the
+> embedded bundle there automatically, and `settings.json` is regenerated with the default node list
+> when absent — so a single binary is enough to bootstrap. `tls_skip_verify` exists for testing only
+> — it disables node authentication.
 
 ### 4. Android (Termux)
 
@@ -148,9 +153,12 @@ default — the CLI subcommand always wins. See
 
 | Field | Default | Description |
 | --- | --- | --- |
-| `node_addr` | `127.0.0.1:9253` | Node tunnel address (`ip:port` or `host:port`) |
+| `node_addr` | `127.0.0.1:9253` | Single node tunnel address (`ip:port` or `host:port`). Used when `node_addrs` is empty. |
+| `node_addrs` | `[]` | Multiple node addresses. Takes precedence over `node_addr`. |
+| `node_strategy` | `round_robin` | Node selection: `round_robin`, `latency`, or `random`. |
+| `node_ca_files` | `{}` | Optional per-node certificate files (map of `addr -> cert file`). |
 | `proxy_listen` | `127.0.0.1:9252` | Local SOCKS5/HTTP proxy listen address |
-| `tls_ca_file` | `certs/node.crt` | Node certificate (extracted from the binary if missing) |
+| `tls_ca_file` | `certs/node.crt` | Trusted node certificate(s); may contain a PEM bundle |
 | `tls_skip_verify` | `false` | Disable node authentication (testing only) |
 | `client_key_file` | `keys/client.key` | Client ed25519 identity |
 | `aliases` | `{}` | Local `name.surface -> id.surface` aliases |
@@ -177,8 +185,37 @@ default — the CLI subcommand always wins. See
 | `health_listen` | `127.0.0.1:9292` | `/healthz` endpoint (`""` disables) |
 | `tls_cert_file` / `tls_key_file` | `certs/node.crt` / `certs/node.key` | Node identity (auto-generated) |
 | `dns_servers` | `1.1.1.1:53`, `8.8.8.8:53` | Upstream resolvers for internet traffic |
+| `exit_proxy` | `""` | Optional upstream proxy for clearnet (e.g. `socks5://127.0.0.1:9050`); empty = direct |
+| `exit_proxy_fallback_direct` | `false` | If the exit proxy is down, fall back to a direct connection |
 | `heartbeat_timeout_seconds` | `45` | Session timeout |
 | `allowed_agents` | `[]` | Static agent allowlist (`[]` = open registration) |
+
+### Internet exit (optional proxy / Tor)
+
+By default the node is the internet exit and connects directly to clearnet sites. You can instead
+route **clearnet only** through an upstream proxy — for example a local Tor daemon — so destinations
+see the proxy/Tor exit instead of your VPS IP:
+
+```json
+{
+  "role": "node",
+  "tunnel_listen": "0.0.0.0:9253",
+  "exit_proxy": "socks5://127.0.0.1:9050",
+  "exit_proxy_fallback_direct": false
+}
+```
+
+- `exit_proxy` accepts `socks5://[user:pass@]host:port` or `http://[user:pass@]host:port`.
+  A bare `host:port` is treated as SOCKS5. Leave it empty (default) for a direct exit.
+- With SOCKS5 the **hostname is sent to the proxy** (remote DNS), so Tor resolves names and there is
+  no DNS leak. `.onion` addresses work automatically because they are not `.surface`.
+- `.surface` traffic is **never** sent to the exit; it always goes to the agent over the tunnel.
+- `exit_proxy_fallback_direct: true` keeps connectivity if the proxy is down, but breaks the
+  anonymization; keep it `false` if the exit must not leak your VPS IP.
+
+Notes: Tor usually **increases** latency (the benefit is anonymity, not speed); many sites block Tor
+exits with captchas; the transport is TCP-only. For extra hardening, firewall the VPS so its only
+outbound traffic is to the tunnel and to Tor.
 
 ---
 
@@ -204,6 +241,51 @@ matches the connecting key, so no one can impersonate or squat an address.
 ```
 
 Same `identity_dir` with several `virtual_port` entries = one address, multiple ports.
+
+### Multiple nodes
+
+A client (or combined process) can connect to several nodes at once. The local proxy picks a node
+per connection according to `node_strategy`, and retries the next node if a stream cannot be opened:
+
+```json
+{
+  "node_addrs": ["vps1.example.com:9253", "vps2.example.com:9253"],
+  "node_strategy": "round_robin"
+}
+```
+
+- `round_robin` — rotate through healthy nodes (default).
+- `latency` — prefer the node with the lowest connection latency.
+- `random` — pick a healthy node at random.
+
+Each node is maintained independently: if one goes down, its reconnect loop backs off while the
+others keep serving traffic. Agents also register with **every** configured node, so `.surface`
+services stay reachable whichever node the client picks. To publish on multiple nodes, run the
+agent with the same `node_addrs` list.
+
+Use `node_ca_files` when each node has its own certificate:
+
+```json
+{
+  "node_addrs": ["vps1.example.com:9253", "vps2.example.com:9253"],
+  "node_ca_files": {
+    "vps1.example.com:9253": "certs/node1.crt",
+    "vps2.example.com:9253": "certs/node2.crt"
+  }
+}
+```
+
+Alternatively, `tls_ca_file` may point to a PEM bundle containing all trusted node certificates.
+Connections remain pinned by public key; there is no `tls_skip_verify` requirement.
+
+Builds can embed the bundle (`certs/nodes.crt`). When `settings.json` or `certs/nodes.crt` are absent,
+the binary recreates them from the embedded defaults, so only the binary itself needs to be
+distributed.
+
+**Trade-off:** this is still single-hop per connection, so no anonymity is gained — each node sees
+the traffic it carries. What you get is redundancy, load distribution, and several exit IPs.
+
+See [`settings.multi-node.example.json`](settings.multi-node.example.json).
 
 ---
 
@@ -266,6 +348,7 @@ structs.go db.go     GORM models + SQLite (WAL) setup and migrations
 registry.go          service/key registry over GORM
 identity.go cert.go  ed25519 identities, derived names, certificate pinning
 tunnel.go sessions.go TLS + yamux transport, handshake, session manager
+multinode.go        multi-node pool, selection strategies, failover
 node.go              node role: listener, routing, internet exit
 agent.go             agent role: identities, registration, reverse tunnels
 client.go proxy.go socks5.go httpproxy.go exit.go  local proxy and forwarding

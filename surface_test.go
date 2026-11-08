@@ -339,7 +339,7 @@ func TestClientAuthorization(t *testing.T) {
 }
 
 func TestEnsureClientCertExtractsEmbedded(t *testing.T) {
-	if len(embeddedNodeCert) == 0 {
+	if len(embeddedTrustedCertBytes()) == 0 {
 		t.Skip("no embedded certificate")
 	}
 	dir := t.TempDir()
@@ -351,8 +351,8 @@ func TestEnsureClientCertExtractsEmbedded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(raw, embeddedNodeCert) {
-		t.Fatal("extracted certificate does not match the embedded one")
+	if !bytes.Equal(raw, embeddedTrustedCertBytes()) {
+		t.Fatal("extracted certificate does not match the embedded bundle")
 	}
 
 	nodeTarget := filepath.Join(dir, "nodecerts", "node.crt")
@@ -544,4 +544,422 @@ func TestCombinedMode(t *testing.T) {
 
 	assertViaProxy(t, combinedAddr, agentName, hiddenPort, "SURFACE_HIDDEN")
 	assertViaProxy(t, combinedAddr, internetHost, internetPort, "SURFACE_INTERNET")
+}
+
+func TestParseExitProxy(t *testing.T) {
+	if p, err := parseExitProxy(""); err != nil || p != nil {
+		t.Fatalf("empty exit_proxy should be nil,nil; got %v,%v", p, err)
+	}
+	cases := []struct{ in, want string }{
+		{"socks5://127.0.0.1:9050", "socks5://127.0.0.1:9050"},
+		{"127.0.0.1:9050", "socks5://127.0.0.1:9050"},
+		{"http://127.0.0.1:8080", "http://127.0.0.1:8080"},
+		{"socks5://user:pass@127.0.0.1:9050", "socks5://127.0.0.1:9050"},
+	}
+	for _, c := range cases {
+		p, err := parseExitProxy(c.in)
+		if err != nil {
+			t.Fatalf("parse %q: %v", c.in, err)
+		}
+		if p.String() != c.want {
+			t.Fatalf("parse %q = %q, want %q", c.in, p.String(), c.want)
+		}
+	}
+	for _, bad := range []string{"socks5://127.0.0.1", "ftp://127.0.0.1:21"} {
+		if _, err := parseExitProxy(bad); err == nil {
+			t.Fatalf("expected error for %q", bad)
+		}
+	}
+}
+
+func httpGetOverConn(conn net.Conn, host string) (string, error) {
+	defer conn.Close()
+	fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", host)
+	response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		return "", err
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func TestExitProxyDialers(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "VIA_PROXY")
+	}))
+	defer target.Close()
+	targetAddr := strings.TrimPrefix(target.URL, "http://")
+	host, portStr, _ := net.SplitHostPort(targetAddr)
+	port, _ := strconv.Atoi(portStr)
+
+	direct, err := NewInternetDialer([]string{"1.1.1.1:53"}, "", false, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyAddr := freeAddr(t)
+	proxy := NewProxyServer(proxyAddr, direct, logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = proxy.Start(ctx) }()
+	time.Sleep(150 * time.Millisecond)
+
+	for _, scheme := range []string{"socks5", "http"} {
+		dialer, err := parseExitProxy(scheme + "://" + proxyAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn, err := dialer.DialTarget(ctx, host, port)
+		if err != nil {
+			t.Fatalf("%s dial: %v", scheme, err)
+		}
+		body, err := httpGetOverConn(conn, host)
+		if err != nil {
+			t.Fatalf("%s get: %v", scheme, err)
+		}
+		if !strings.Contains(body, "VIA_PROXY") {
+			t.Fatalf("%s unexpected body %q", scheme, body)
+		}
+	}
+}
+
+func TestExitProxyFallback(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "DIRECT")
+	}))
+	defer target.Close()
+	targetAddr := strings.TrimPrefix(target.URL, "http://")
+	host, portStr, _ := net.SplitHostPort(targetAddr)
+	port, _ := strconv.Atoi(portStr)
+
+	withFallback, err := NewInternetDialer(nil, "socks5://127.0.0.1:1", true, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := withFallback.DialTarget(host, port)
+	if err != nil {
+		t.Fatalf("fallback dial: %v", err)
+	}
+	body, err := httpGetOverConn(conn, host)
+	if err != nil || !strings.Contains(body, "DIRECT") {
+		t.Fatalf("fallback body %q err %v", body, err)
+	}
+
+	noFallback, err := NewInternetDialer(nil, "socks5://127.0.0.1:1", false, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := noFallback.DialTarget(host, port); err == nil {
+		t.Fatal("expected dial to fail when the proxy is down and fallback is disabled")
+	}
+}
+
+func TestEffectiveNodeAddrs(t *testing.T) {
+	// node_addrs takes precedence
+	s := &Settings{NodeAddr: "a:1", NodeAddrs: []string{"b:2", "c:3"}}
+	got := s.effectiveNodeAddrs()
+	if len(got) != 2 || got[0] != "b:2" || got[1] != "c:3" {
+		t.Fatalf("expected [b:2 c:3], got %v", got)
+	}
+	// fallback to node_addr
+	s = &Settings{NodeAddr: "a:1"}
+	got = s.effectiveNodeAddrs()
+	if len(got) != 1 || got[0] != "a:1" {
+		t.Fatalf("expected [a:1], got %v", got)
+	}
+	// empty
+	s = &Settings{}
+	got = s.effectiveNodeAddrs()
+	if len(got) != 0 {
+		t.Fatalf("expected empty, got %v", got)
+	}
+	// trims whitespace and skips blanks
+	s = &Settings{NodeAddrs: []string{" a:1 ", "", " b:2 "}}
+	got = s.effectiveNodeAddrs()
+	if len(got) != 2 || got[0] != "a:1" || got[1] != "b:2" {
+		t.Fatalf("expected [a:1 b:2], got %v", got)
+	}
+}
+
+func TestEffectiveNodeStrategy(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"", "round_robin"},
+		{"round_robin", "round_robin"},
+		{"ROUND_ROBIN", "round_robin"},
+		{"latency", "latency"},
+		{"LATENCY", "latency"},
+		{"random", "random"},
+		{"RANDOM", "random"},
+		{"bogus", "round_robin"},
+	}
+	for _, c := range cases {
+		s := &Settings{NodeStrategy: c.in}
+		if got := s.effectiveNodeStrategy(); got != c.want {
+			t.Fatalf("strategy(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestValidateSettings(t *testing.T) {
+	s := &Settings{NodeStrategy: "round_robin"}
+	if err := s.validate(); err != nil {
+		t.Fatal(err)
+	}
+	s = &Settings{NodeStrategy: "latency"}
+	if err := s.validate(); err != nil {
+		t.Fatal(err)
+	}
+	s = &Settings{NodeStrategy: "random"}
+	if err := s.validate(); err != nil {
+		t.Fatal(err)
+	}
+	s = &Settings{NodeStrategy: "invalid"}
+	if err := s.validate(); err == nil {
+		t.Fatal("expected error for invalid strategy")
+	}
+}
+
+func TestParseCertificatesPEM(t *testing.T) {
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "node.crt")
+	if err := ensureTLSCert(certFile, filepath.Join(dir, "node.key")); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(certFile)
+
+	// single cert
+	certs, err := parseCertificatesPEM(raw)
+	if err != nil || len(certs) != 1 {
+		t.Fatalf("single cert: got %d certs, err=%v", len(certs), err)
+	}
+
+	// bundle of two
+	otherDir := t.TempDir()
+	otherFile := filepath.Join(otherDir, "node.crt")
+	if err := ensureTLSCert(otherFile, filepath.Join(otherDir, "node.key")); err != nil {
+		t.Fatal(err)
+	}
+	otherRaw, _ := os.ReadFile(otherFile)
+	bundle := append(raw, otherRaw...)
+	certs, err = parseCertificatesPEM(bundle)
+	if err != nil || len(certs) != 2 {
+		t.Fatalf("bundle: got %d certs, err=%v", len(certs), err)
+	}
+}
+
+func TestMultiNodeEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	logger := log.New(io.Discard, "", 0)
+
+	hidden := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "SURFACE_HIDDEN")
+	}))
+	defer hidden.Close()
+	internet := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "SURFACE_INTERNET")
+	}))
+	defer internet.Close()
+
+	hiddenAddr := strings.TrimPrefix(hidden.URL, "http://")
+	internetAddr := strings.TrimPrefix(internet.URL, "http://")
+	_, hiddenPortStr, _ := net.SplitHostPort(hiddenAddr)
+	hiddenPort, _ := strconv.Atoi(hiddenPortStr)
+	internetHost, internetPortStr, _ := net.SplitHostPort(internetAddr)
+	internetPort, _ := strconv.Atoi(internetPortStr)
+
+	// Two nodes
+	nodeTunnel1 := freeAddr(t)
+	nodeTunnel2 := freeAddr(t)
+	nodeSettings1 := &Settings{
+		Role:                    "node",
+		DBName:                  filepath.Join(dir, "node1.db"),
+		TunnelListen:            nodeTunnel1,
+		ProxyListen:             "off",
+		TLSCertFile:             filepath.Join(dir, "node1.crt"),
+		TLSKeyFile:              filepath.Join(dir, "node1.key"),
+		DNServers:               []string{"1.1.1.1:53"},
+		HeartbeatSecond:         5,
+		HeartbeatTimeoutSeconds: 15,
+	}
+	nodeSettings1.applyDefaults()
+	nodeSettings2 := &Settings{
+		Role:                    "node",
+		DBName:                  filepath.Join(dir, "node2.db"),
+		TunnelListen:            nodeTunnel2,
+		ProxyListen:             "off",
+		TLSCertFile:             filepath.Join(dir, "node2.crt"),
+		TLSKeyFile:              filepath.Join(dir, "node2.key"),
+		DNServers:               []string{"1.1.1.1:53"},
+		HeartbeatSecond:         5,
+		HeartbeatTimeoutSeconds: 15,
+	}
+	nodeSettings2.applyDefaults()
+
+	// Agent identity
+	agentDir := filepath.Join(dir, "agent")
+	agentPriv, err := LoadOrCreateKey(filepath.Join(agentDir, "secret.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentName := DeriveName(agentPriv.Public().(ed25519.PublicKey))
+
+	// Agent connects to BOTH nodes
+	agentSettings := &Settings{
+		Role:            "agent",
+		NodeAddrs:       []string{nodeTunnel1, nodeTunnel2},
+		TLSSkipVerify:   true,
+		IdentityDir:     agentDir,
+		HeartbeatSecond: 5,
+		HiddenServices:  []HiddenService{{Alias: "hidden", VirtualPort: hiddenPort, Target: hiddenAddr}},
+	}
+
+	// Client connects to BOTH nodes with round-robin
+	clientAddr := freeAddr(t)
+	clientSettings := &Settings{
+		Role:            "client",
+		NodeAddrs:       []string{nodeTunnel1, nodeTunnel2},
+		NodeStrategy:    "round_robin",
+		TLSSkipVerify:   true,
+		ProxyListen:     clientAddr,
+		ClientKeyFile:   filepath.Join(dir, "client.key"),
+		HeartbeatSecond: 5,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = runNode(ctx, nodeSettings1, logger) }()
+	go func() { _ = runNode(ctx, nodeSettings2, logger) }()
+	time.Sleep(200 * time.Millisecond)
+	go func() { _ = runAgent(ctx, agentSettings, logger) }()
+	time.Sleep(200 * time.Millisecond)
+	go func() { _ = runClient(ctx, clientSettings, logger) }()
+
+	// Multiple requests should succeed (round-robin across both nodes)
+	for i := 0; i < 6; i++ {
+		assertViaProxy(t, clientAddr, agentName, hiddenPort, "SURFACE_HIDDEN")
+		assertViaProxy(t, clientAddr, internetHost, internetPort, "SURFACE_INTERNET")
+	}
+}
+
+func TestMultiNodeFailover(t *testing.T) {
+	dir := t.TempDir()
+	logger := log.New(io.Discard, "", 0)
+
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "SURFACE_TARGET")
+	}))
+	defer target.Close()
+	targetAddr := strings.TrimPrefix(target.URL, "http://")
+	_, targetPortStr, _ := net.SplitHostPort(targetAddr)
+	targetPort, _ := strconv.Atoi(targetPortStr)
+
+	// One working node and one dead node
+	nodeTunnel := freeAddr(t)
+	nodeSettings := &Settings{
+		Role:                    "node",
+		DBName:                  filepath.Join(dir, "node.db"),
+		TunnelListen:            nodeTunnel,
+		ProxyListen:             "off",
+		TLSCertFile:             filepath.Join(dir, "node.crt"),
+		TLSKeyFile:              filepath.Join(dir, "node.key"),
+		DNServers:               []string{"1.1.1.1:53"},
+		HeartbeatSecond:         5,
+		HeartbeatTimeoutSeconds: 15,
+	}
+	nodeSettings.applyDefaults()
+
+	// Agent identity
+	agentDir := filepath.Join(dir, "agent")
+	agentPriv, err := LoadOrCreateKey(filepath.Join(agentDir, "secret.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentName := DeriveName(agentPriv.Public().(ed25519.PublicKey))
+
+	// Agent registers on the working node only
+	agentSettings := &Settings{
+		Role:            "agent",
+		NodeAddrs:       []string{nodeTunnel},
+		TLSSkipVerify:   true,
+		IdentityDir:     agentDir,
+		HeartbeatSecond: 5,
+		HiddenServices:  []HiddenService{{Alias: "target", VirtualPort: targetPort, Target: targetAddr}},
+	}
+
+	// Client connects to dead node + working node
+	deadAddr := "127.0.0.1:1" // nothing listens here
+	clientAddr := freeAddr(t)
+	clientSettings := &Settings{
+		Role:            "client",
+		NodeAddrs:       []string{deadAddr, nodeTunnel},
+		NodeStrategy:    "round_robin",
+		TLSSkipVerify:   true,
+		ProxyListen:     clientAddr,
+		ClientKeyFile:   filepath.Join(dir, "client.key"),
+		HeartbeatSecond: 5,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = runNode(ctx, nodeSettings, logger) }()
+	time.Sleep(200 * time.Millisecond)
+	go func() { _ = runAgent(ctx, agentSettings, logger) }()
+	time.Sleep(200 * time.Millisecond)
+	go func() { _ = runClient(ctx, clientSettings, logger) }()
+
+	// Requests should succeed via the working node, even though dead node is in the list
+	assertViaProxy(t, clientAddr, agentName, targetPort, "SURFACE_TARGET")
+}
+
+func TestMultiNodePerNodeCAFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Generate two different node certs
+	cert1 := filepath.Join(dir, "node1.crt")
+	key1 := filepath.Join(dir, "node1.key")
+	if err := ensureTLSCert(cert1, key1); err != nil {
+		t.Fatal(err)
+	}
+	cert2 := filepath.Join(dir, "node2.crt")
+	key2 := filepath.Join(dir, "node2.key")
+	if err := ensureTLSCert(cert2, key2); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Settings{
+		NodeAddrs: []string{"node1.example.com:9253", "node2.example.com:9253"},
+		NodeCAFiles: map[string]string{
+			"node1.example.com:9253": cert1,
+			"node2.example.com:9253": cert2,
+		},
+	}
+
+	// Verify each node gets its own cert
+	raw1, err := trustedNodeCertBytesFor(s, "node1.example.com:9253")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw2, err := trustedNodeCertBytesFor(s, "node2.example.com:9253")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert1Parsed, _ := parseCertificatePEM(raw1)
+	cert2Parsed, _ := parseCertificatePEM(raw2)
+	if pinnedKeyFingerprint(cert1Parsed) != nil && pinnedKeyFingerprint(cert2Parsed) != nil {
+		if string(pinnedKeyFingerprint(cert1Parsed)) == string(pinnedKeyFingerprint(cert2Parsed)) {
+			t.Fatal("per-node certs should have different fingerprints")
+		}
+	}
+
+	// Unknown addr falls back to shared cert (embedded or error)
+	s2 := &Settings{NodeAddrs: []string{"unknown:9253"}}
+	_, err = trustedNodeCertBytesFor(s2, "unknown:9253")
+	// Should use embedded cert (which exists in test binaries)
+	if err != nil && len(embeddedTrustedCertBytes()) > 0 {
+		t.Fatalf("expected fallback to embedded cert, got %v", err)
+	}
 }

@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 )
 
 type HiddenService struct {
@@ -21,6 +23,8 @@ type Settings struct {
 	TunnelListen            string   `json:"tunnel_listen"`
 	ProxyListen             string   `json:"proxy_listen"`
 	HealthListen            string   `json:"health_listen"`
+	ExitProxy               string   `json:"exit_proxy"`
+	ExitProxyFallbackDirect bool     `json:"exit_proxy_fallback_direct"`
 	TLSCertFile             string   `json:"tls_cert_file"`
 	TLSKeyFile              string   `json:"tls_key_file"`
 	DNServers               []string `json:"dns_servers"`
@@ -28,6 +32,9 @@ type Settings struct {
 	AllowedAgents           []string `json:"allowed_agents"`
 
 	NodeAddr        string            `json:"node_addr"`
+	NodeAddrs       []string          `json:"node_addrs"`
+	NodeStrategy    string            `json:"node_strategy"`
+	NodeCAFiles     map[string]string `json:"node_ca_files"`
 	TLSCAFile       string            `json:"tls_ca_file"`
 	TLSSkipVerify   bool              `json:"tls_skip_verify"`
 	IdentityDir     string            `json:"identity_dir"`
@@ -111,5 +118,53 @@ func LoadSettings(path string) (*Settings, error) {
 		return nil, err
 	}
 	s.applyDefaults()
+	if err := s.validate(); err != nil {
+		return nil, err
+	}
 	return s, nil
+}
+
+// effectiveNodeAddrs returns the list of node addresses to connect to.
+// NodeAddrs takes precedence over NodeAddr for backwards compatibility.
+func (s *Settings) effectiveNodeAddrs() []string {
+	if len(s.NodeAddrs) > 0 {
+		out := make([]string, 0, len(s.NodeAddrs))
+		for _, addr := range s.NodeAddrs {
+			addr = strings.TrimSpace(addr)
+			if addr != "" {
+				out = append(out, addr)
+			}
+		}
+		return out
+	}
+	if s.NodeAddr != "" {
+		return []string{s.NodeAddr}
+	}
+	return nil
+}
+
+// effectiveNodeStrategy returns the normalized strategy name.
+func (s *Settings) effectiveNodeStrategy() string {
+	switch strings.ToLower(strings.TrimSpace(s.NodeStrategy)) {
+	case "latency":
+		return "latency"
+	case "random":
+		return "random"
+	case "", "round_robin":
+		return "round_robin"
+	default:
+		return "round_robin"
+	}
+}
+
+// validate checks for configuration errors.
+func (s *Settings) validate() error {
+	strategy := strings.ToLower(strings.TrimSpace(s.NodeStrategy))
+	switch strategy {
+	case "", "round_robin", "latency", "random":
+		// ok
+	default:
+		return fmt.Errorf("unknown node_strategy %q (use round_robin, latency, or random)", s.NodeStrategy)
+	}
+	return nil
 }

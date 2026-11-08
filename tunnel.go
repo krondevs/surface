@@ -195,27 +195,37 @@ func readVirtualPort(r io.Reader) (int, error) {
 	return int(binary.BigEndian.Uint16(b[:])), nil
 }
 
-func dialTLS(s *Settings) (net.Conn, error) {
+// dialTLSAddr establishes a TLS connection to a specific node address,
+// using the per-node certificate (NodeCAFiles) or the shared one.
+func dialTLSAddr(s *Settings, addr string) (net.Conn, error) {
 	cfg := &tls.Config{
 		MinVersion: tls.VersionTLS12,
-		ServerName: hostOnly(s.NodeAddr),
+		ServerName: hostOnly(addr),
 	}
 	if s.TLSSkipVerify {
 		cfg.InsecureSkipVerify = true
 	} else {
-		raw, err := trustedNodeCertBytes(s)
+		raw, err := trustedNodeCertBytesFor(s, addr)
 		if err != nil {
 			return nil, err
 		}
-		cert, err := parseCertificatePEM(raw)
+		certs, err := parseCertificatesPEM(raw)
 		if err != nil {
 			return nil, err
+		}
+		pins := make([][]byte, 0, len(certs))
+		for _, cert := range certs {
+			pins = append(pins, pinnedKeyFingerprint(cert))
 		}
 		cfg.InsecureSkipVerify = true
-		cfg.VerifyPeerCertificate = verifyPinnedCertificate(pinnedKeyFingerprint(cert))
+		cfg.VerifyPeerCertificate = verifyPinnedCertificateAny(pins)
 	}
 	dialer := &net.Dialer{Timeout: 15 * time.Second}
-	return tls.DialWithDialer(dialer, "tcp", s.NodeAddr, cfg)
+	conn, err := tls.DialWithDialer(dialer, "tcp", addr, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
 }
 
 func hostOnly(address string) string {

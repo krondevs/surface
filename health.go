@@ -11,11 +11,15 @@ func startHealthServer(listen string, node *Node, logger *log.Logger) {
 	handler := http.NewServeMux()
 	handler.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		online, err := node.registry.CountOnlineServices()
+		verifiedPeers, peerErr := node.registry.CountPeers(true)
 		status := "success"
 		message := "ok"
 		if err != nil {
 			status = "error"
 			message = err.Error()
+		} else if peerErr != nil {
+			status = "error"
+			message = peerErr.Error()
 		}
 		payload := map[string]any{
 			"status":  status,
@@ -24,6 +28,7 @@ func startHealthServer(listen string, node *Node, logger *log.Logger) {
 				"services_online": online,
 				"agents":          node.sessions.CountByRole("agent"),
 				"clients":         node.sessions.CountByRole("client"),
+				"peers_verified":  verifiedPeers,
 				"time":            time.Now().UTC().Format(time.RFC3339),
 			},
 		}

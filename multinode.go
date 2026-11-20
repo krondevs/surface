@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -63,39 +64,126 @@ type MultiNodeDialer struct {
 	aliases  map[string]string
 	logger   *log.Logger
 
-	nodes    []*nodePool
+	mu       sync.RWMutex
+	nodes    map[string]*nodePool
+	ctx      context.Context
+	stopped  bool
+	wg       sync.WaitGroup
+	maxNodes int
 	strategy string
 	rr       uint64 // atomic counter for round-robin
 }
 
 // NewMultiNodeDialer creates a dialer that connects to all configured nodes.
 func NewMultiNodeDialer(s *Settings, priv ed25519.PrivateKey, logger *log.Logger) *MultiNodeDialer {
-	addrs := s.effectiveNodeAddrs()
-	nodes := make([]*nodePool, 0, len(addrs))
-	for _, addr := range addrs {
-		nodes = append(nodes, &nodePool{addr: addr})
-	}
-	return &MultiNodeDialer{
+	m := &MultiNodeDialer{
 		settings: s,
 		priv:     priv,
 		aliases:  s.Aliases,
 		logger:   logger,
-		nodes:    nodes,
+		nodes:    map[string]*nodePool{},
+		maxNodes: s.PeerMax,
 		strategy: s.effectiveNodeStrategy(),
 	}
+	if m.maxNodes <= 0 {
+		m.maxNodes = 64
+	}
+	for _, addr := range s.effectiveNodeAddrs() {
+		m.addNodeLocked(addr)
+	}
+	return m
+}
+
+func normalizeNodeAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return net.JoinHostPort(strings.ToLower(host), port)
+}
+
+func (m *MultiNodeDialer) addNodeLocked(addr string) *nodePool {
+	addr = normalizeNodeAddr(addr)
+	if addr == "" {
+		return nil
+	}
+	if node, ok := m.nodes[addr]; ok {
+		return node
+	}
+	if len(m.nodes) >= m.maxNodes {
+		return nil
+	}
+	node := &nodePool{addr: addr}
+	m.nodes[addr] = node
+	return node
+}
+
+// AddInitialPeer registers a peer before Run starts.
+func (m *MultiNodeDialer) AddInitialPeer(addr string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.addNodeLocked(addr)
+}
+
+// AddPeer registers a dynamically discovered peer and starts maintaining it.
+func (m *MultiNodeDialer) AddPeer(addr string) bool {
+	addr = normalizeNodeAddr(addr)
+	m.mu.Lock()
+	if _, ok := m.nodes[addr]; ok {
+		m.mu.Unlock()
+		return false
+	}
+	if len(m.nodes) >= m.maxNodes {
+		m.mu.Unlock()
+		return false
+	}
+	node := &nodePool{addr: addr}
+	m.nodes[addr] = node
+	ctx := m.ctx
+	if m.stopped || ctx == nil || ctx.Err() != nil {
+		m.mu.Unlock()
+		return false
+	}
+	m.wg.Add(1)
+	m.mu.Unlock()
+	go func() {
+		defer m.wg.Done()
+		m.maintain(ctx, node)
+	}()
+	m.logger.Printf("discovered peer %s", node.addr)
+	return true
+}
+
+func (m *MultiNodeDialer) startNode(ctx context.Context, node *nodePool) {
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		m.maintain(ctx, node)
+	}()
 }
 
 // Run maintains connections to all nodes concurrently. It blocks until ctx is canceled.
 func (m *MultiNodeDialer) Run(ctx context.Context) {
-	var wg sync.WaitGroup
-	for _, node := range m.nodes {
-		wg.Add(1)
-		go func(n *nodePool) {
-			defer wg.Done()
-			m.maintain(ctx, n)
-		}(node)
+	m.mu.Lock()
+	if m.ctx != nil {
+		m.mu.Unlock()
+		return
 	}
-	wg.Wait()
+	m.ctx = ctx
+	nodes := make([]*nodePool, 0, len(m.nodes))
+	for _, node := range m.nodes {
+		nodes = append(nodes, node)
+	}
+	m.mu.Unlock()
+	for _, node := range nodes {
+		m.startNode(ctx, node)
+	}
+	<-ctx.Done()
+	m.mu.Lock()
+	m.stopped = true
+	m.mu.Unlock()
+	m.wg.Wait()
 }
 
 // maintain keeps a single node connection alive, reconnecting on failure.
@@ -234,6 +322,7 @@ func (m *MultiNodeDialer) DialTarget(host string, port int) (net.Conn, error) {
 
 // candidates returns healthy nodes ordered by the configured strategy.
 func (m *MultiNodeDialer) candidates() []*nodePool {
+	m.mu.RLock()
 	healthy := make([]*nodePool, 0, len(m.nodes))
 	for _, node := range m.nodes {
 		mux, _, _ := node.snapshot()
@@ -241,6 +330,7 @@ func (m *MultiNodeDialer) candidates() []*nodePool {
 			healthy = append(healthy, node)
 		}
 	}
+	m.mu.RUnlock()
 	if len(healthy) == 0 {
 		return nil
 	}

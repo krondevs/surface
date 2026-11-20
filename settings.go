@@ -32,6 +32,17 @@ type Settings struct {
 	HeartbeatTimeoutSeconds int      `json:"heartbeat_timeout_seconds"`
 	AllowedAgents           []string `json:"allowed_agents"`
 
+	NodeKeyFile        string   `json:"node_key_file"`
+	PeerKeyFile        string   `json:"peer_key_file"`
+	SeedNodes          []string `json:"seed_nodes"`
+	AdvertiseAddr      string   `json:"advertise_addr"`
+	AllowedNodes       []string `json:"allowed_nodes"`
+	PeerDiscovery      bool     `json:"peer_discovery"`
+	PeerRefreshSeconds int      `json:"peer_refresh_seconds"`
+	PeerMax            int      `json:"peer_max"`
+	PeerCacheFile      string   `json:"peer_cache_file"`
+	PeerAllowPrivate   bool     `json:"peer_allow_private"`
+
 	NodeAddr        string            `json:"node_addr"`
 	NodeAddrs       []string          `json:"node_addrs"`
 	NodeStrategy    string            `json:"node_strategy"`
@@ -44,6 +55,12 @@ type Settings struct {
 	HeartbeatSecond int               `json:"heartbeat_seconds"`
 	ClientKeyFile   string            `json:"client_key_file"`
 	Aliases         map[string]string `json:"aliases"`
+}
+
+var defaultSeedNodes = []string{
+	"162.35.99.111:9253",
+	"157.250.198.67:9253",
+	"161.129.68.197:9253",
 }
 
 func defaultSettings() *Settings {
@@ -63,6 +80,13 @@ func defaultSettings() *Settings {
 		ClientKeyFile:           "keys/client.key",
 		Aliases:                 map[string]string{},
 		NodeAuth:                "pinned",
+		NodeKeyFile:             "keys/node.key",
+		PeerKeyFile:             "keys/peer.key",
+		SeedNodes:               append([]string(nil), defaultSeedNodes...),
+		PeerDiscovery:           true,
+		PeerRefreshSeconds:      300,
+		PeerMax:                 64,
+		PeerCacheFile:           "keys/peers.json",
 	}
 }
 
@@ -113,6 +137,24 @@ func (s *Settings) applyDefaults() {
 	if s.NodeAuth == "" {
 		s.NodeAuth = d.NodeAuth
 	}
+	if s.NodeKeyFile == "" {
+		s.NodeKeyFile = d.NodeKeyFile
+	}
+	if s.PeerKeyFile == "" {
+		s.PeerKeyFile = d.PeerKeyFile
+	}
+	if s.SeedNodes == nil {
+		s.SeedNodes = append([]string(nil), d.SeedNodes...)
+	}
+	if s.PeerRefreshSeconds <= 0 {
+		s.PeerRefreshSeconds = d.PeerRefreshSeconds
+	}
+	if s.PeerMax <= 0 {
+		s.PeerMax = d.PeerMax
+	}
+	if s.PeerCacheFile == "" {
+		s.PeerCacheFile = d.PeerCacheFile
+	}
 }
 
 func LoadSettings(path string) (*Settings, error) {
@@ -149,6 +191,9 @@ func (s *Settings) effectiveNodeAddrs() []string {
 	}
 	if s.NodeAddr != "" {
 		return []string{s.NodeAddr}
+	}
+	if len(s.SeedNodes) > 0 {
+		return s.effectiveSeedNodes()
 	}
 	return nil
 }
@@ -194,5 +239,39 @@ func (s *Settings) validate() error {
 	if _, err := parseOnionProxy(s.OnionProxy); err != nil {
 		return err
 	}
+	if s.PeerDiscovery {
+		for _, addr := range s.SeedNodes {
+			if _, err := normalizeSeedAddr(addr); err != nil {
+				return fmt.Errorf("seed_nodes: %w", err)
+			}
+		}
+		if s.AdvertiseAddr != "" {
+			if _, err := normalizePeerAddr(s.AdvertiseAddr, s.PeerAllowPrivate); err != nil {
+				return fmt.Errorf("advertise_addr: %w", err)
+			}
+		}
+		for _, key := range s.AllowedNodes {
+			if _, err := ParsePublicKey(key); err != nil {
+				return fmt.Errorf("allowed_nodes: %w", err)
+			}
+		}
+		if s.PeerRefreshSeconds < 30 {
+			return fmt.Errorf("peer_refresh_seconds must be at least 30")
+		}
+		if s.PeerMax < 1 || s.PeerMax > 1024 {
+			return fmt.Errorf("peer_max must be between 1 and 1024")
+		}
+	}
 	return nil
+}
+
+func (s *Settings) effectiveSeedNodes() []string {
+	out := make([]string, 0, len(s.SeedNodes))
+	for _, addr := range s.SeedNodes {
+		addr = strings.TrimSpace(addr)
+		if addr != "" {
+			out = append(out, addr)
+		}
+	}
+	return out
 }

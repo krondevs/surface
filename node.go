@@ -21,12 +21,15 @@ import (
 )
 
 type Node struct {
-	settings *Settings
-	db       *gorm.DB
-	registry *Registry
-	sessions *SessionManager
-	internet *InternetDialer
-	logger   *log.Logger
+	settings  *Settings
+	db        *gorm.DB
+	registry  *Registry
+	sessions  *SessionManager
+	internet  *InternetDialer
+	peers     *PeerManager
+	identity  ed25519.PrivateKey
+	publicKey string
+	logger    *log.Logger
 }
 
 func runNode(ctx context.Context, s *Settings, logger *log.Logger) error {
@@ -38,14 +41,28 @@ func runNode(ctx context.Context, s *Settings, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
-	node := &Node{
-		settings: s,
-		db:       db,
-		registry: NewRegistry(db),
-		sessions: NewSessionManager(),
-		internet: internet,
-		logger:   logger,
+	nodeKeyFile := s.NodeKeyFile
+	if nodeKeyFile == "" {
+		nodeKeyFile = "keys/node.key"
 	}
+	nodeKey, err := LoadOrCreateKey(nodeKeyFile)
+	if err != nil {
+		return err
+	}
+	publicKey := PublicKeyString(nodeKey.Public().(ed25519.PublicKey))
+	node := &Node{
+		settings:  s,
+		db:        db,
+		registry:  NewRegistry(db),
+		sessions:  NewSessionManager(),
+		internet:  internet,
+		identity:  nodeKey,
+		publicKey: publicKey,
+		logger:    logger,
+	}
+	node.peers = NewPeerManager(s, node.registry, nodeKey, logger)
+	logger.Printf("node public key: %s", publicKey)
+	go node.peers.Run(ctx)
 	clearnetExit := internet.ExitDescription()
 	onionExit := internet.OnionDescription()
 	logger.Printf("internet exit: %s; onion exit: %s", clearnetExit, onionExit)
@@ -193,6 +210,22 @@ func (n *Node) handleTunnelConn(conn net.Conn) {
 		}
 		n.sessions.Remove(sessionID)
 
+	case connNode:
+		if !n.nodeAllowed(publicKey) {
+			writeStatus(conn, 2)
+			return
+		}
+		if err := writeStatus(conn, 0); err != nil {
+			return
+		}
+		n.peers.HandleNodeConn(conn, pub)
+
+	case connPeers:
+		if err := writeStatus(conn, 0); err != nil {
+			return
+		}
+		n.peers.HandlePeersConn(conn, pub)
+
 	default:
 		writeStatus(conn, 5)
 	}
@@ -323,6 +356,22 @@ func (n *Node) agentAllowed(publicKey string) bool {
 	}
 	for _, allowed := range n.settings.AllowedAgents {
 		if allowed == publicKey {
+			return true
+		}
+	}
+	return false
+}
+
+func (n *Node) nodeAllowed(publicKey string) bool {
+	if key, err := n.registry.FindNodeKey(publicKey); err == nil {
+		return key.Enabled && key.Role == "node"
+	}
+	if len(n.settings.AllowedNodes) == 0 {
+		return true
+	}
+	for _, allowed := range n.settings.AllowedNodes {
+		pub, err := ParsePublicKey(allowed)
+		if err == nil && PublicKeyString(pub) == publicKey {
 			return true
 		}
 	}

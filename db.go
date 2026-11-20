@@ -28,7 +28,7 @@ func OpenDB(path string) (*gorm.DB, error) {
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	if err := db.AutoMigrate(&Service{}, &NodeKey{}); err != nil {
+	if err := db.AutoMigrate(&Service{}, &NodeKey{}, &NodePeer{}); err != nil {
 		return nil, err
 	}
 	return db, nil

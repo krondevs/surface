@@ -75,6 +75,8 @@ flowchart LR
 - **SQLite registry with WAL** (pure-Go driver), automatic migrations on startup.
 - **Clearnet exit + onion routing**: clearnet goes direct or through an optional SOCKS5/HTTP proxy;
   `.onion` always uses a dedicated Tor SOCKS5 (`onion_proxy`) and never falls back to direct.
+- **Peer discovery**: nodes announce to seeds, verify each other by callback and gossip the peer list;
+  clients and agents learn new nodes automatically without distributing certificates.
 - **Tor-like default**: run with no subcommand to get client + agent simultaneously.
 
 ---
@@ -140,9 +142,15 @@ Run the node; the CLI role overrides the `role` field in the file:
 
 ```bash
 ./surface node --config settings.json   # writes a default settings.json if missing
+./surface node id --config settings.json
 ```
 
-Open `9253/tcp` in the firewall. The node writes `certs/node.crt` and `certs/node.key` on first run.
+Open `9253/tcp` in the firewall. The node writes `certs/node.crt` and `certs/node.key` on first run
+(transport encryption only; no CA or certificate distribution is needed). It also creates
+`keys/node.key`, the identity used for peer discovery. On a VPS with a public IP, the default
+`seed_nodes` list is enough to announce the node; behind NAT set `advertise_addr` to the public
+`ip:port`.
+
 For `.onion` access, install Tor on the node and keep the default
 `"onion_proxy": "socks5://127.0.0.1:9050"` (see [Internet exit](#internet-exit-clearnet-and-onion-routing)).
 
@@ -156,7 +164,8 @@ template, already preconfigured with the public node list:
 # optional: edit settings.json to change node_addrs or add hidden_services
 ```
 
-To publish a local service, add an entry to `hidden_services` (see below).
+The generated file includes one example service (`apix24`, target `127.0.0.1:5000`); edit or remove it
+to match your local services (see below).
 
 ### 3. Browser (Firefox)
 
@@ -216,13 +225,15 @@ surface            [--config settings.json]   # client + agent (default, Tor-lik
 surface node       [--config settings.json]
 surface agent      [--config settings.json]
 surface client     [--config settings.json]
-surface node allow <public_key> [--role agent|client] [--config settings.json]
-surface agent  id  [--config settings.json]
+surface node allow <public_key> [--role agent|client|node] [--config settings.json]
+surface node  id   [--config settings.json]
+surface agent id   [--config settings.json]
 surface client id  [--config settings.json]
 ```
 
-- `id` prints the device public key (and the derived `.surface` name for agents).
-- `node allow` authorizes a client or agent key; the effect is immediate (no restart).
+- `id` prints the device public key (and the derived `.surface` name for agents). `node id` prints the
+  node ed25519 key used for peer discovery.
+- `node allow` authorizes a client, agent or peer node key; the effect is immediate (no restart).
 
 ---
 
@@ -239,15 +250,20 @@ default — the CLI subcommand always wins. If `settings.json` is absent, the bi
 | `node_addr` | `127.0.0.1:9253` | Single node tunnel address (`ip:port` or `host:port`). Used when `node_addrs` is empty. |
 | `node_addrs` | `[]` | Multiple node addresses. Takes precedence over `node_addr`. |
 | `node_strategy` | `round_robin` | Node selection: `round_robin`, `latency`, or `random`. |
-| `node_ca_files` | `{}` | Optional per-node certificate files (map of `addr -> cert file`). |
+| `node_ca_files` | `{}` | Legacy per-node certificates for `node_auth: pinned`; not used in the default zero-trust mode. |
 | `proxy_listen` | `127.0.0.1:9252` | Local SOCKS5/HTTP proxy listen address |
-| `tls_ca_file` | `certs/nodes.crt` | Trusted node certificate(s); may contain a PEM bundle |
+| `tls_ca_file` | `""` | Legacy trust bundle for `node_auth: pinned`; not needed by default. |
 | `tls_skip_verify` | `true` (generated) | Skip node certificate verification. The generated template enables it because `node_auth: none` is the default and `.surface` is already E2E encrypted. Set it to `false` together with `node_auth: pinned` for closed networks. |
 | `node_auth` | `none` (generated) | `none` treats the node as an untrusted relay (TLS encryption only; E2E protects `.surface`). Legacy configs without this field use `pinned`. |
 | `client_key_file` | `keys/client.key` | Client ed25519 identity |
+| `peer_key_file` | `keys/peer.key` | ed25519 key used to authenticate peer-list requests |
+| `peer_discovery` | `true` | Pull peer lists from nodes and use discovered nodes |
+| `peer_refresh_seconds` | `300` | How often to refresh peer lists |
+| `peer_max` | `64` | Maximum nodes in the client/agent pool |
+| `peer_cache_file` | `keys/peers.json` | Local cache of learned peers (atomic, `0600`) |
 | `aliases` | `{}` | Local `name.surface -> id.surface` aliases |
 | `identity_dir` | `identity` | Default agent identity directory |
-| `hidden_services` | `[]` | Services to publish (see below) |
+| `hidden_services` | one `apix24` example | Services to publish (see below); edit or remove the example |
 | `heartbeat_seconds` | `15` | Registry refresh interval |
 
 ### Agent services (`hidden_services[]`)
@@ -267,7 +283,14 @@ default — the CLI subcommand always wins. If `settings.json` is absent, the bi
 | `tunnel_listen` | `0.0.0.0:9253` | Public tunnel listener |
 | `proxy_listen` | `127.0.0.1:9252` | Optional local proxy on the node |
 | `health_listen` | `127.0.0.1:9292` | `/healthz` endpoint (`""` disables) |
-| `tls_cert_file` / `tls_key_file` | `certs/node.crt` / `certs/node.key` | Node identity (auto-generated) |
+| `tls_cert_file` / `tls_key_file` | `certs/node.crt` / `certs/node.key` | TLS transport certificate (auto-generated; not a trust root) |
+| `node_key_file` | `keys/node.key` | ed25519 node identity for peer discovery |
+| `seed_nodes` | see template | Bootstrap nodes used to announce this node and learn peers |
+| `advertise_addr` | `""` | Public `ip:port` to announce. Empty = derive from the connection source IP + tunnel port |
+| `allowed_nodes` | `[]` | Peer-node allowlist (`[]` = open announcements with callback verification) |
+| `peer_discovery` | `true` | Enable node announcement, gossip and peer exchange |
+| `peer_refresh_seconds` | `300` | Gossip/refresh interval |
+| `peer_max` | `64` | Maximum known peer nodes |
 | `dns_servers` | `1.1.1.1:53`, `8.8.8.8:53` | Upstream resolvers for internet traffic |
 | `exit_proxy` | `""` | Optional upstream proxy for **clearnet only**; empty = direct |
 | `exit_proxy_fallback_direct` | `false` | If the clearnet exit proxy is down, fall back to direct (never applies to `.onion`) |
@@ -307,6 +330,64 @@ connectivity if that proxy is down, but it never applies to `.onion`.
 Notes: Tor usually **increases** latency (the benefit is anonymity, not speed); many sites block Tor
 exits with captchas; the transport is TCP-only. For extra hardening, firewall the VPS so its only
 outbound traffic is to the tunnel and to Tor.
+
+### Peer discovery
+
+A new node does not need a public directory entry or a manual client configuration. It announces
+itself to the seed nodes, which verify it and share it with other nodes, clients and agents.
+
+Flow:
+
+1. A node generates `keys/node.key` and prints its public key with `surface node id`.
+2. It connects to each `seed_nodes` entry and sends a signed `announce`.
+3. The seed verifies the signature, timestamp and address, then calls the announced address back
+   with a random challenge. Only nodes that sign the challenge with the announced key are stored.
+4. Verified peers are stored in SQLite (`node_peers`) and returned in signed peer lists.
+5. Nodes gossip the peer list to other nodes; clients and agents pull the list every
+   `peer_refresh_seconds` (5 minutes by default).
+6. Clients add discovered nodes to their dynamic pool (used by `node_strategy`); agents register
+   their `hidden_services` on the discovered nodes, so `.surface` names work there too.
+
+Configuration:
+
+```json
+{
+  "node_key_file": "keys/node.key",
+  "seed_nodes": [
+    "162.35.99.111:9253",
+    "157.250.198.67:9253",
+    "161.129.68.197:9253"
+  ],
+  "advertise_addr": "",
+  "allowed_nodes": [],
+  "peer_discovery": true,
+  "peer_refresh_seconds": 300,
+  "peer_max": 64,
+  "peer_cache_file": "keys/peers.json"
+}
+```
+
+- `advertise_addr` is only needed behind NAT or when the external port differs. If empty, the seed
+  uses the source IP of the announcement plus the tunnel port.
+- `allowed_nodes: []` keeps announcements open but requires callback verification. Fill it with
+  `ed25519:...` keys (see `surface node id`) to restrict which nodes may join.
+- Clients and agents persist learned peers in `peer_cache_file` (atomic write, mode `0600`). The
+  cache is a hint: every peer is re-checked when connecting.
+- Private, loopback, link-local, CGNAT and multicast addresses in peer lists are rejected. This
+  prevents a malicious node from making clients scan internal networks.
+- Announcements and peer lists are signed with the node ed25519 key. Peer-list requests are
+  authenticated with `peer_key_file`. TLS remains self-signed and unverified; no CA or certificate
+  distribution is required.
+- Rate limits, 200-entry list caps and a 7-day TTL keep the peer database bounded.
+
+Rollout order: update the seeds first, then the other nodes, then clients/agents. Old nodes reject
+the new `connNode`/`connPeers` handshakes with status 5; new nodes and clients simply ignore that
+seed and keep using `node_addrs`.
+
+Limitations: this is seed-assisted gossip, not a DHT. If every seed is down, existing peers keep
+working but new nodes cannot announce themselves. A node behind NAT must set a reachable
+`advertise_addr` and allow the callback. In `node_auth: pinned` mode, automatic discovery of new
+nodes also requires distributing their certificates; the default zero-trust mode needs no certs.
 
 ---
 

@@ -235,6 +235,18 @@ func TestGeneratedSettingsDefaults(t *testing.T) {
 	if s.OnionProxy != "socks5://127.0.0.1:9050" {
 		t.Fatalf("generated onion_proxy = %q", s.OnionProxy)
 	}
+	if !s.PeerDiscovery {
+		t.Fatal("generated settings should enable peer_discovery")
+	}
+	if len(s.SeedNodes) != 3 {
+		t.Fatalf("generated seed_nodes = %v", s.SeedNodes)
+	}
+	if s.NodeKeyFile == "" || s.PeerKeyFile == "" || s.PeerCacheFile == "" {
+		t.Fatal("generated settings should include node/peer key and cache paths")
+	}
+	if len(s.HiddenServices) != 1 || s.HiddenServices[0].Alias != "apix24" {
+		t.Fatalf("generated hidden_services = %+v, want the apix24 example", s.HiddenServices)
+	}
 }
 
 func TestDefaultOnionProxy(t *testing.T) {

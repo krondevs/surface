@@ -74,9 +74,13 @@ func main() {
 
 	switch role {
 	case "node":
+		if len(positional) > 0 && positional[0] == "id" {
+			err = printNodeIdentity(settings)
+			break
+		}
 		if len(positional) > 0 && positional[0] == "allow" {
 			if len(positional) < 2 {
-				logger.Fatalf("usage: surface node allow <public_key> [--role agent|client] [--config path]")
+				logger.Fatalf("usage: surface node allow <public_key> [--role agent|client|node] [--config path]")
 			}
 			allowRole := roleFlag
 			if allowRole == "" {
@@ -115,6 +119,18 @@ func main() {
 	if err != nil && err != context.Canceled {
 		logger.Fatalf("%v", err)
 	}
+}
+
+func printNodeIdentity(s *Settings) error {
+	priv, err := LoadOrCreateKey(s.NodeKeyFile)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("public key: %s\n", PublicKeyString(priv.Public().(ed25519.PublicKey)))
+	if s.AdvertiseAddr != "" {
+		fmt.Printf("advertise: %s\n", s.AdvertiseAddr)
+	}
+	return nil
 }
 
 func printIdentity(s *Settings) error {
@@ -163,8 +179,8 @@ func setupLogging(path string) (*log.Logger, func()) {
 }
 
 func allowKey(settings *Settings, keyString, role string) error {
-	if role != "agent" && role != "client" {
-		return fmt.Errorf("invalid role %q (use agent or client)", role)
+	if role != "agent" && role != "client" && role != "node" {
+		return fmt.Errorf("invalid role %q (use agent, client or node)", role)
 	}
 	pub, err := ParsePublicKey(keyString)
 	if err != nil {
@@ -188,7 +204,8 @@ func usage() {
 	log.Println("  surface agent    [--config settings.json]")
 	log.Println("  surface client   [--config settings.json]")
 	log.Println("  surface vpn      [--config settings.json] --tun-fd <fd>")
-	log.Println("  surface node allow <public_key> [--role agent|client] [--config settings.json]")
+	log.Println("  surface node allow <public_key> [--role agent|client|node] [--config settings.json]")
+	log.Println("  surface node id [--config settings.json]")
 	log.Println("  surface agent id [--config settings.json]")
 	log.Println("  surface client id [--config settings.json]")
 }

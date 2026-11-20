@@ -9,6 +9,17 @@ import (
 )
 
 func runClient(ctx context.Context, s *Settings, logger *log.Logger) error {
+	discovery, err := NewPeerDiscovery(s, logger)
+	if err != nil {
+		return err
+	}
+	if discovery != nil {
+		go discovery.Run(ctx)
+	}
+	return runClientWithDiscovery(ctx, s, logger, discovery)
+}
+
+func runClientWithDiscovery(ctx context.Context, s *Settings, logger *log.Logger, discovery *PeerDiscovery) error {
 	if err := ensureClientCert(s); err != nil {
 		return err
 	}
@@ -17,42 +28,41 @@ func runClient(ctx context.Context, s *Settings, logger *log.Logger) error {
 		return err
 	}
 	logger.Printf("client public key: %s", PublicKeyString(priv.Public().(ed25519.PublicKey)))
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-		if err := clientSession(ctx, s, logger, priv); err != nil {
-			logger.Printf("client session ended: %v", err)
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(5 * time.Second):
-		}
-	}
-}
-
-func clientSession(ctx context.Context, s *Settings, logger *log.Logger, priv ed25519.PrivateKey) error {
 	if len(s.effectiveNodeAddrs()) == 0 {
 		return errors.New("client requires node_addr or node_addrs")
 	}
 
 	dialer := NewMultiNodeDialer(s, priv, logger)
+	if discovery != nil {
+		for _, peer := range discovery.Snapshot() {
+			dialer.AddInitialPeer(peer.Address)
+		}
+		discovery.Subscribe(func(peer PeerInfo) {
+			dialer.AddPeer(peer.Address)
+		})
+	}
 
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
 	dialerDone := make(chan struct{})
 	go func() {
 		defer close(dialerDone)
 		dialer.Run(sessionCtx)
 	}()
 
-	proxy := NewProxyServer(s.ProxyListen, dialer, logger)
-	err := proxy.Start(sessionCtx)
+	for {
+		proxy := NewProxyServer(s.ProxyListen, dialer, logger)
+		err := proxy.Start(sessionCtx)
+		if ctx.Err() != nil {
+			break
+		}
+		logger.Printf("client session ended: %v", err)
+		select {
+		case <-ctx.Done():
+		case <-time.After(5 * time.Second):
+		}
+	}
 	cancel()
 	<-dialerDone
-	return err
+	return nil
 }

@@ -23,3 +23,16 @@ type NodeKey struct {
 	Role      string `gorm:"column:role;index" json:"role"`
 	Enabled   bool   `gorm:"column:enabled;index" json:"enabled"`
 }
+
+type NodePeer struct {
+	gorm.Model
+	PublicKey  string    `gorm:"column:public_key;uniqueIndex" json:"public_key"`
+	Address    string    `gorm:"column:address;index" json:"address"`
+	Status     string    `gorm:"column:status;index" json:"status"`
+	Source     string    `gorm:"column:source" json:"source"`
+	FirstSeen  time.Time `gorm:"column:first_seen" json:"first_seen"`
+	LastSeen   time.Time `gorm:"column:last_seen;index" json:"last_seen"`
+	LastVerify time.Time `gorm:"column:last_verify" json:"last_verify"`
+	Failures   int       `gorm:"column:failures" json:"failures"`
+	ExpiresAt  time.Time `gorm:"column:expires_at;index" json:"expires_at"`
+}

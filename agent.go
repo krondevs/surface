@@ -57,6 +57,17 @@ func groupByIdentity(s *Settings) ([]*agentIdentity, error) {
 }
 
 func runAgent(ctx context.Context, s *Settings, logger *log.Logger) error {
+	discovery, err := NewPeerDiscovery(s, logger)
+	if err != nil {
+		return err
+	}
+	if discovery != nil {
+		go discovery.Run(ctx)
+	}
+	return runAgentWithDiscovery(ctx, s, logger, discovery)
+}
+
+func runAgentWithDiscovery(ctx context.Context, s *Settings, logger *log.Logger, discovery *PeerDiscovery) error {
 	if err := ensureClientCert(s); err != nil {
 		return err
 	}
@@ -81,33 +92,74 @@ func runAgent(ctx context.Context, s *Settings, logger *log.Logger) error {
 		checkTargets(logger, identity)
 	}
 
-	var wg sync.WaitGroup
+	pools := make([]*agentNodePool, 0, len(identities))
 	for _, identity := range identities {
-		wg.Add(1)
-		go func(identity *agentIdentity) {
-			defer wg.Done()
-			runAgentIdentity(ctx, s, logger, identity)
-		}(identity)
+		pools = append(pools, newAgentNodePool(ctx, s, logger, identity))
 	}
-	wg.Wait()
+	addPeer := func(addr string) {
+		for _, pool := range pools {
+			pool.Add(addr)
+		}
+	}
+	for _, addr := range s.effectiveNodeAddrs() {
+		addPeer(addr)
+	}
+	if discovery != nil {
+		for _, peer := range discovery.Snapshot() {
+			addPeer(peer.Address)
+		}
+		discovery.Subscribe(func(peer PeerInfo) {
+			addPeer(peer.Address)
+		})
+	}
+	for _, pool := range pools {
+		pool.Wait()
+	}
 	return nil
 }
 
-func runAgentIdentity(ctx context.Context, s *Settings, logger *log.Logger, identity *agentIdentity) {
-	addrs := s.effectiveNodeAddrs()
-	if len(addrs) == 0 {
-		logger.Printf("agent[%s] no node addresses configured", identity.name)
+type agentNodePool struct {
+	ctx      context.Context
+	settings *Settings
+	logger   *log.Logger
+	identity *agentIdentity
+
+	mu    sync.Mutex
+	addrs map[string]bool
+	wg    sync.WaitGroup
+}
+
+func newAgentNodePool(ctx context.Context, s *Settings, logger *log.Logger, identity *agentIdentity) *agentNodePool {
+	return &agentNodePool{
+		ctx:      ctx,
+		settings: s,
+		logger:   logger,
+		identity: identity,
+		addrs:    map[string]bool{},
+	}
+}
+
+func (p *agentNodePool) Add(addr string) {
+	addr = normalizeNodeAddr(addr)
+	if addr == "" {
 		return
 	}
-	var wg sync.WaitGroup
-	for _, addr := range addrs {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-			agentNodeLoop(ctx, s, logger, identity, addr)
-		}(addr)
+	p.mu.Lock()
+	if p.addrs[addr] {
+		p.mu.Unlock()
+		return
 	}
-	wg.Wait()
+	p.addrs[addr] = true
+	p.mu.Unlock()
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		agentNodeLoop(p.ctx, p.settings, p.logger, p.identity, addr)
+	}()
+}
+
+func (p *agentNodePool) Wait() {
+	p.wg.Wait()
 }
 
 func agentNodeLoop(ctx context.Context, s *Settings, logger *log.Logger, identity *agentIdentity, addr string) {

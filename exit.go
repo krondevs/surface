@@ -9,25 +9,33 @@ import (
 	"time"
 )
 
+var errOnionProxyRequired = errors.New("onion destination requires onion_proxy (Tor SOCKS5)")
+
 type InternetDialer struct {
-	resolver *net.Resolver
-	dialer   *net.Dialer
-	proxy    proxyDialer
-	fallback bool
-	logger   *log.Logger
+	resolver   *net.Resolver
+	dialer     *net.Dialer
+	proxy      proxyDialer
+	onionProxy proxyDialer
+	fallback   bool
+	logger     *log.Logger
 }
 
-func NewInternetDialer(dnsServers []string, exitProxy string, fallback bool, logger *log.Logger) (*InternetDialer, error) {
+func NewInternetDialer(dnsServers []string, exitProxy, onionProxy string, fallback bool, logger *log.Logger) (*InternetDialer, error) {
 	proxy, err := parseExitProxy(exitProxy)
+	if err != nil {
+		return nil, err
+	}
+	onion, err := parseOnionProxy(onionProxy)
 	if err != nil {
 		return nil, err
 	}
 	dialer := &net.Dialer{Timeout: 30 * time.Second}
 	d := &InternetDialer{
-		dialer:   dialer,
-		proxy:    proxy,
-		fallback: fallback,
-		logger:   logger,
+		dialer:     dialer,
+		proxy:      proxy,
+		onionProxy: onion,
+		fallback:   fallback,
+		logger:     logger,
 	}
 	if proxy == nil {
 		d.resolver = buildResolver(dnsServers, dialer)
@@ -66,9 +74,30 @@ func (d *InternetDialer) ExitDescription() string {
 	return d.proxy.String()
 }
 
+func (d *InternetDialer) OnionDescription() string {
+	if d.onionProxy == nil {
+		return "disabled"
+	}
+	return d.onionProxy.String()
+}
+
 func (d *InternetDialer) DialTarget(host string, port int) (net.Conn, error) {
+	host = NormalizeHost(host)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// .onion destinations must go through Tor and never fall back to a direct
+	// connection: a direct dial would leak the onion name to the DNS resolver.
+	if IsOnionName(host) {
+		if d.onionProxy == nil {
+			return nil, errOnionProxyRequired
+		}
+		conn, err := d.onionProxy.DialTarget(ctx, host, port)
+		if err != nil && d.logger != nil {
+			d.logger.Printf("onion exit %s failed for %s: %v", d.onionProxy.String(), host, err)
+		}
+		return conn, err
+	}
 
 	if d.proxy != nil {
 		conn, err := d.proxy.DialTarget(ctx, host, port)

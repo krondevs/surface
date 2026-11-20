@@ -73,7 +73,8 @@ flowchart LR
   without a download and without `tls_skip_verify`.
 - **Client/agent authorization**: close the network to only the keys you approve.
 - **SQLite registry with WAL** (pure-Go driver), automatic migrations on startup.
-- **Optional upstream internet exit** (SOCKS5/HTTP, e.g. Tor) with remote DNS and optional direct fallback.
+- **Clearnet exit + onion routing**: clearnet goes direct or through an optional SOCKS5/HTTP proxy;
+  `.onion` always uses a dedicated Tor SOCKS5 (`onion_proxy`) and never falls back to direct.
 - **Tor-like default**: run with no subcommand to get client + agent simultaneously.
 
 ---
@@ -96,29 +97,66 @@ configura el cliente zero-trust, instala el autostart de Termux:Boot y arranca e
 - Log: `tail -f ~/.surface/surface.log`
 - Actualizar o reinstalar: vuelve a ejecutar el mismo comando.
 
-### 1. Node on your VPS
+## Instalación en Android (APK)
 
-Generate a config, then run the node:
+La forma fiable de mantener el proxy corriendo en Android es una **app con servicio en
+primer plano** (foreground service). Un binario suelto en Termux muere cuando Android
+aplica Doze o cuando se desliza Termux de "recientes"; un foreground service con
+notificación persistente no.
+
+El wrapper (`android/`) empaqueta el binario `surface-android-arm64` y lo ejecuta como
+servicio en primer plano. La app permite iniciar/detener el proxy, ver la clave pública
+del dispositivo y editar la lista de nodos.
+
+- Proxy: **SOCKS5/HTTP `127.0.0.1:9252`** — activa **"Proxy DNS when using SOCKS v5"** en el navegador.
+- El APK se compila en CI (GitHub Actions) sin necesidad de Android SDK local.
+
+### Compilar el APK
+
+**Vía CI (recomendado, sin SDK local):** sube un tag `v*` o lanza el workflow
+`Android APK` manualmente desde la pestaña *Actions*. El APK queda como artefacto y,
+si es un tag, adjunto al release.
+
+**Localmente** (requiere JDK 17 + Android SDK):
 
 ```bash
-./surface --config settings.json     # writes a default settings.json if missing
-# edit settings.json: set "role": "node", "tunnel_listen": "0.0.0.0:9253"
-./surface node --config settings.json
+./scripts/build-android.sh          # compila el binario Go a android/app/src/main/jniLibs/
+cd android && ./gradlew assembleRelease
+# APK en android/app/build/outputs/apk/release/
+```
+
+### Notas
+
+- El binario va en `jniLibs/arm64-v8a/libsurface.so` (arm64). Para añadir `armeabi-v7a`
+  o `x86_64`, ajusta `SURFACE_ANDROID_ABIS` en `scripts/build-android.sh` (requieren cgo).
+- La clave privada del cliente se guarda en el almacenamiento interno de la app
+  (`filesDir/keys/client.key`) y no se respalda (`allowBackup="false"`).
+- El arranque automático al encender el dispositivo (receptor `BOOT_COMPLETED`) queda
+  como mejora futura.
+
+### 1. Node on your VPS
+
+Run the node; the CLI role overrides the `role` field in the file:
+
+```bash
+./surface node --config settings.json   # writes a default settings.json if missing
 ```
 
 Open `9253/tcp` in the firewall. The node writes `certs/node.crt` and `certs/node.key` on first run.
+For `.onion` access, install Tor on the node and keep the default
+`"onion_proxy": "socks5://127.0.0.1:9050"` (see [Internet exit](#internet-exit-clearnet-and-onion-routing)).
 
 ### 2. Client + agent on your computer
 
-Use the all-in-one example and point `node_addr` at your VPS:
+Just run the binary. If `settings.json` is missing, it is generated automatically from the embedded
+template, already preconfigured with the public node list:
 
 ```bash
-cp settings.all-in-one.example.json settings.json
-# edit settings.json:
-#   "node_addr": "YOUR_VPS_IP:9253"
-#   "hidden_services": [ ... ]
 ./surface --config settings.json     # combined: local proxy + published services
+# optional: edit settings.json to change node_addrs or add hidden_services
 ```
+
+To publish a local service, add an entry to `hidden_services` (see below).
 
 ### 3. Browser (Firefox)
 
@@ -131,9 +169,10 @@ Now `http://example.com` goes out through your node, and
 `http://<id>.surface/` reaches your internal service.
 
 > `settings.json` is regenerated with the default node list when absent, so a single binary is enough
-> to bootstrap. The default config uses `node_auth: "none"`: no node certificates are needed because
-> `.surface` traffic is end-to-end encrypted. For a closed network, set `node_auth: "pinned"`; the
-> trusted certificate bundle is embedded in the binary and can also be extracted to `tls_ca_file`.
+> to bootstrap. The default config uses `node_auth: "none"` and `tls_skip_verify: true`: no node
+> certificates are needed because `.surface` traffic is end-to-end encrypted. For a closed network,
+> set `node_auth: "pinned"` and `tls_skip_verify: false`; the trusted certificate bundle is embedded
+> in the binary and can also be extracted to `tls_ca_file`.
 
 ### 4. Android (Termux)
 
@@ -190,8 +229,8 @@ surface client id  [--config settings.json]
 ## Configuration
 
 A single `settings.json` can be used for both combined and node modes. `role` in the file is only a
-default — the CLI subcommand always wins. See
-[`settings.all-in-one.example.json`](settings.all-in-one.example.json).
+default — the CLI subcommand always wins. If `settings.json` is absent, the binary writes the embedded
+`default_settings.json` template with every field and the public node list already configured.
 
 ### Client / combined
 
@@ -203,7 +242,7 @@ default — the CLI subcommand always wins. See
 | `node_ca_files` | `{}` | Optional per-node certificate files (map of `addr -> cert file`). |
 | `proxy_listen` | `127.0.0.1:9252` | Local SOCKS5/HTTP proxy listen address |
 | `tls_ca_file` | `certs/nodes.crt` | Trusted node certificate(s); may contain a PEM bundle |
-| `tls_skip_verify` | `false` | Disable node authentication (testing only) |
+| `tls_skip_verify` | `true` (generated) | Skip node certificate verification. The generated template enables it because `node_auth: none` is the default and `.surface` is already E2E encrypted. Set it to `false` together with `node_auth: pinned` for closed networks. |
 | `node_auth` | `none` (generated) | `none` treats the node as an untrusted relay (TLS encryption only; E2E protects `.surface`). Legacy configs without this field use `pinned`. |
 | `client_key_file` | `keys/client.key` | Client ed25519 identity |
 | `aliases` | `{}` | Local `name.surface -> id.surface` aliases |
@@ -230,33 +269,40 @@ default — the CLI subcommand always wins. See
 | `health_listen` | `127.0.0.1:9292` | `/healthz` endpoint (`""` disables) |
 | `tls_cert_file` / `tls_key_file` | `certs/node.crt` / `certs/node.key` | Node identity (auto-generated) |
 | `dns_servers` | `1.1.1.1:53`, `8.8.8.8:53` | Upstream resolvers for internet traffic |
-| `exit_proxy` | `""` | Optional upstream proxy for clearnet (e.g. `socks5://127.0.0.1:9050`); empty = direct |
-| `exit_proxy_fallback_direct` | `false` | If the exit proxy is down, fall back to a direct connection |
+| `exit_proxy` | `""` | Optional upstream proxy for **clearnet only**; empty = direct |
+| `exit_proxy_fallback_direct` | `false` | If the clearnet exit proxy is down, fall back to direct (never applies to `.onion`) |
+| `onion_proxy` | `socks5://127.0.0.1:9050` | Tor SOCKS5 used **only** for `.onion`; `off`/`none` disables onion routing |
 | `heartbeat_timeout_seconds` | `45` | Session timeout |
 | `allowed_agents` | `[]` | Static agent allowlist (`[]` = open registration) |
 
-### Internet exit (optional proxy / Tor)
+### Internet exit: clearnet and onion routing
 
-By default the node is the internet exit and connects directly to clearnet sites. You can instead
-route **clearnet only** through an upstream proxy — for example a local Tor daemon — so destinations
-see the proxy/Tor exit instead of your VPS IP:
+By default the node connects directly to clearnet sites and uses Tor **only** for `.onion`:
 
 ```json
 {
-  "role": "node",
-  "tunnel_listen": "0.0.0.0:9253",
-  "exit_proxy": "socks5://127.0.0.1:9050",
-  "exit_proxy_fallback_direct": false
+  "exit_proxy": "",
+  "exit_proxy_fallback_direct": false,
+  "onion_proxy": "socks5://127.0.0.1:9050"
 }
 ```
 
-- `exit_proxy` accepts `socks5://[user:pass@]host:port` or `http://[user:pass@]host:port`.
-  A bare `host:port` is treated as SOCKS5. Leave it empty (default) for a direct exit.
-- With SOCKS5 the **hostname is sent to the proxy** (remote DNS), so Tor resolves names and there is
-  no DNS leak. `.onion` addresses work automatically because they are not `.surface`.
-- `.surface` traffic is **never** sent to the exit; it always goes to the agent over the tunnel.
-- `exit_proxy_fallback_direct: true` keeps connectivity if the proxy is down, but breaks the
-  anonymization; keep it `false` if the exit must not leak your VPS IP.
+Routing rules:
+
+- `.surface` → agent over the tunnel (end-to-end encrypted); never uses an exit.
+- `.onion` → `onion_proxy` (SOCKS5 Tor). The hostname is sent to Tor (remote DNS); the node never
+  resolves it locally and **never falls back to a direct connection**. If Tor is down, the request
+  fails with a clear error.
+- Every other host → `exit_proxy` if configured, otherwise a direct connection. It never uses
+  `onion_proxy`.
+
+`onion_proxy` accepts `socks5://[user:pass@]host:port` or `socks5h://...`; a bare `host:port` is
+treated as SOCKS5. Use `off` or `none` to disable onion routing.
+
+`exit_proxy` accepts `socks5://[user:pass@]host:port` or `http://[user:pass@]host:port` and applies to
+clearnet only. If you set `exit_proxy` to Tor, then all clearnet traffic also goes through Tor; leave
+it empty (default) to use Tor only for `.onion`. `exit_proxy_fallback_direct: true` keeps clearnet
+connectivity if that proxy is down, but it never applies to `.onion`.
 
 Notes: Tor usually **increases** latency (the benefit is anonymity, not speed); many sites block Tor
 exits with captchas; the transport is TCP-only. For extra hardening, firewall the VPS so its only
@@ -330,7 +376,8 @@ distributed.
 **Trade-off:** this is still single-hop per connection, so no anonymity is gained — each node sees
 the traffic it carries. What you get is redundancy, load distribution, and several exit IPs.
 
-See [`settings.multi-node.example.json`](settings.multi-node.example.json).
+Configure multiple addresses with `node_addrs` in the generated `settings.json`; the embedded template
+already includes the public node list.
 
 ### Zero-trust nodes and end-to-end encryption
 

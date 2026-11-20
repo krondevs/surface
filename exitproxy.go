@@ -54,6 +54,25 @@ func parseExitProxy(raw string) (proxyDialer, error) {
 	}
 }
 
+// parseOnionProxy parses the dedicated proxy used for .onion destinations.
+// Onion routing requires SOCKS5 so the hostname is resolved by Tor, never by
+// the node's own resolver. Empty, "off" and "none" disable onion routing.
+func parseOnionProxy(raw string) (proxyDialer, error) {
+	raw = strings.TrimSpace(raw)
+	switch strings.ToLower(raw) {
+	case "", "off", "none", "disabled":
+		return nil, nil
+	}
+	d, err := parseExitProxy(raw)
+	if err != nil {
+		return nil, fmt.Errorf("onion_proxy: %w", err)
+	}
+	if _, ok := d.(*socks5Dialer); !ok {
+		return nil, errors.New("onion_proxy: only socks5:// is supported (use the Tor SOCKS port)")
+	}
+	return d, nil
+}
+
 type socks5Dialer struct {
 	addr string
 	user string

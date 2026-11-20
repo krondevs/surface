@@ -1,0 +1,38 @@
+{
+  "role": "combined",
+  "db_name": "surface.db",
+  "log_file": "surface.log",
+
+  "tunnel_listen": "0.0.0.0:9253",
+  "proxy_listen": "127.0.0.1:9252",
+  "health_listen": "127.0.0.1:9292",
+
+  "tls_cert_file": "certs/node.crt",
+  "tls_key_file": "certs/node.key",
+  "tls_ca_file": "certs/nodes.crt",
+  "node_ca_files": {},
+  "tls_skip_verify": true,
+  "node_auth": "none",
+
+  "dns_servers": ["1.1.1.1:53", "8.8.8.8:53"],
+  "exit_proxy": "",
+  "exit_proxy_fallback_direct": false,
+  "onion_proxy": "socks5://127.0.0.1:9050",
+
+  "heartbeat_timeout_seconds": 45,
+  "heartbeat_seconds": 15,
+  "allowed_agents": [],
+
+  "node_addr": "162.35.99.111:9253",
+  "node_addrs": [
+    "162.35.99.111:9253",
+    "157.250.198.67:9253",
+    "161.129.68.197:9253"
+  ],
+  "node_strategy": "round_robin",
+
+  "identity_dir": "identity",
+  "client_key_file": "keys/client.key",
+  "hidden_services": [],
+  "aliases": {}
+}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -28,6 +29,7 @@ func main() {
 
 	configPath := "settings.json"
 	roleFlag := ""
+	tunFd := -1
 	positional := []string{}
 	for i := 0; i < len(rest); i++ {
 		switch rest[i] {
@@ -39,6 +41,11 @@ func main() {
 		case "--role":
 			if i+1 < len(rest) {
 				roleFlag = rest[i+1]
+				i++
+			}
+		case "--tun-fd":
+			if i+1 < len(rest) {
+				tunFd, _ = strconv.Atoi(rest[i+1])
 				i++
 			}
 		default:
@@ -94,6 +101,11 @@ func main() {
 			break
 		}
 		err = runClient(ctx, settings, logger)
+	case "vpn":
+		if tunFd < 0 {
+			logger.Fatalf("vpn role requires --tun-fd <fd>")
+		}
+		err = runVpn(ctx, settings, logger, tunFd)
 	case roleCombined:
 		err = runCombined(ctx, settings, logger)
 	default:
@@ -175,6 +187,7 @@ func usage() {
 	log.Println("  surface node     [--config settings.json]")
 	log.Println("  surface agent    [--config settings.json]")
 	log.Println("  surface client   [--config settings.json]")
+	log.Println("  surface vpn      [--config settings.json] --tun-fd <fd>")
 	log.Println("  surface node allow <public_key> [--role agent|client] [--config settings.json]")
 	log.Println("  surface agent id [--config settings.json]")
 	log.Println("  surface client id [--config settings.json]")

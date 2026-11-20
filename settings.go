@@ -25,6 +25,7 @@ type Settings struct {
 	HealthListen            string   `json:"health_listen"`
 	ExitProxy               string   `json:"exit_proxy"`
 	ExitProxyFallbackDirect bool     `json:"exit_proxy_fallback_direct"`
+	OnionProxy              string   `json:"onion_proxy"`
 	TLSCertFile             string   `json:"tls_cert_file"`
 	TLSKeyFile              string   `json:"tls_key_file"`
 	DNServers               []string `json:"dns_servers"`
@@ -55,6 +56,7 @@ func defaultSettings() *Settings {
 		TLSCertFile:             "certs/node.crt",
 		TLSKeyFile:              "certs/node.key",
 		DNServers:               []string{"1.1.1.1:53", "8.8.8.8:53"},
+		OnionProxy:              "socks5://127.0.0.1:9050",
 		HeartbeatTimeoutSeconds: 45,
 		IdentityDir:             "identity",
 		HeartbeatSecond:         15,
@@ -89,6 +91,9 @@ func (s *Settings) applyDefaults() {
 	}
 	if len(s.DNServers) == 0 {
 		s.DNServers = d.DNServers
+	}
+	if s.OnionProxy == "" {
+		s.OnionProxy = d.OnionProxy
 	}
 	if s.HeartbeatTimeoutSeconds <= 0 {
 		s.HeartbeatTimeoutSeconds = d.HeartbeatTimeoutSeconds
@@ -185,6 +190,9 @@ func (s *Settings) validate() error {
 		// ok
 	default:
 		return fmt.Errorf("unknown node_auth %q (use pinned or none)", s.NodeAuth)
+	}
+	if _, err := parseOnionProxy(s.OnionProxy); err != nil {
+		return err
 	}
 	return nil
 }

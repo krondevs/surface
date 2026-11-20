@@ -34,7 +34,7 @@ func runNode(ctx context.Context, s *Settings, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
-	internet, err := NewInternetDialer(s.DNServers, s.ExitProxy, s.ExitProxyFallbackDirect, logger)
+	internet, err := NewInternetDialer(s.DNServers, s.ExitProxy, s.OnionProxy, s.ExitProxyFallbackDirect, logger)
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,14 @@ func runNode(ctx context.Context, s *Settings, logger *log.Logger) error {
 		internet: internet,
 		logger:   logger,
 	}
-	logger.Printf("internet exit: %s", internet.ExitDescription())
+	clearnetExit := internet.ExitDescription()
+	onionExit := internet.OnionDescription()
+	logger.Printf("internet exit: %s; onion exit: %s", clearnetExit, onionExit)
+	if onionExit == "disabled" {
+		logger.Printf("onion destinations disabled: set onion_proxy to a Tor SOCKS5 (e.g. socks5://127.0.0.1:9050)")
+	} else if clearnetExit != "direct" && clearnetExit == onionExit {
+		logger.Printf("warning: exit_proxy and onion_proxy are the same; clearnet traffic also uses Tor")
+	}
 	if err := ensureTLSCert(s.TLSCertFile, s.TLSKeyFile); err != nil {
 		return err
 	}
@@ -251,7 +258,11 @@ func (n *Node) handleRequestStream(stream net.Conn) {
 
 	upstream, err := n.internet.DialTarget(host, port)
 	if err != nil {
-		writeResponseHeader(stream, respNotFound, false, nil, 0)
+		if IsOnionName(host) {
+			writeResponseHeader(stream, respExitUnavailable, false, nil, 0)
+		} else {
+			writeResponseHeader(stream, respNotFound, false, nil, 0)
+		}
 		return
 	}
 	if err := writeResponseHeader(stream, respOK, false, nil, 0); err != nil {

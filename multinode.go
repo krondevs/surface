@@ -187,7 +187,15 @@ func (m *MultiNodeDialer) DialTarget(host string, port int) (net.Conn, error) {
 		}
 		if status != respOK {
 			stream.Close()
-			lastErr = fmt.Errorf("node %s: request failed with status %d", node.addr, status)
+			if status == respExitUnavailable {
+				if IsOnionName(target) {
+					lastErr = fmt.Errorf("node %s: onion routing unavailable (Tor not configured or unreachable)", node.addr)
+				} else {
+					lastErr = fmt.Errorf("node %s: exit unavailable", node.addr)
+				}
+			} else {
+				lastErr = fmt.Errorf("node %s: request failed with status %d", node.addr, status)
+			}
 			continue
 		}
 		if !IsSurfaceName(target) {

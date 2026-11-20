@@ -77,6 +77,12 @@ func IsSurfaceName(host string) bool {
 	return strings.HasSuffix(strings.ToLower(host), surfaceSuffix)
 }
 
+// IsOnionName reports whether host is a Tor onion address. The host is
+// normalized first, so uppercase names and a trailing dot are accepted.
+func IsOnionName(host string) bool {
+	return strings.HasSuffix(NormalizeHost(host), ".onion")
+}
+
 func NormalizeHost(host string) string {
 	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
 }

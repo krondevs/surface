@@ -596,7 +596,7 @@ func TestExitProxyDialers(t *testing.T) {
 	host, portStr, _ := net.SplitHostPort(targetAddr)
 	port, _ := strconv.Atoi(portStr)
 
-	direct, err := NewInternetDialer([]string{"1.1.1.1:53"}, "", false, logger)
+	direct, err := NewInternetDialer([]string{"1.1.1.1:53"}, "", "", false, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -636,7 +636,7 @@ func TestExitProxyFallback(t *testing.T) {
 	host, portStr, _ := net.SplitHostPort(targetAddr)
 	port, _ := strconv.Atoi(portStr)
 
-	withFallback, err := NewInternetDialer(nil, "socks5://127.0.0.1:1", true, logger)
+	withFallback, err := NewInternetDialer(nil, "socks5://127.0.0.1:1", "", true, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -649,7 +649,7 @@ func TestExitProxyFallback(t *testing.T) {
 		t.Fatalf("fallback body %q err %v", body, err)
 	}
 
-	noFallback, err := NewInternetDialer(nil, "socks5://127.0.0.1:1", false, logger)
+	noFallback, err := NewInternetDialer(nil, "socks5://127.0.0.1:1", "", false, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

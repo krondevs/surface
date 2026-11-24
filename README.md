@@ -3,6 +3,7 @@
 [![Go](https://img.shields.io/badge/Go-1.27%2B-00ADD8?logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](#license)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20windows-blue)](#building-from-source)
+[![SURFACE Browser](https://img.shields.io/badge/browser-SURFACE%20Browser-6f42c1?logo=github)](https://github.com/krondevs/surface-browser)
 
 **Surface** is a lightweight, self-hosted private network of `.surface` addresses — a simpler,
 non-anonymous alternative to Tor's hidden services. A single cross-platform static Go binary acts as
@@ -18,8 +19,23 @@ the network gateway (on a VPS), the service publisher, and the local proxy for y
 - There is **no onion routing**: it's a single hop, so the node still sees metadata (which service,
   origin IP, timing, volume). Surface is about *private reachability and data confidentiality*, not
   anonymity.
+- The official desktop client is **[SURFACE Browser](https://github.com/krondevs/surface-browser)**:
+  a Chromium shell that embeds the Go client, configures the proxy itself and shows an `.surface`
+  lock for end-to-end encrypted pages.
 
 > ⚠️ Surface is a young project. Review the [security model](#security-model) before exposing it.
+
+---
+
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [`SECURITY.md`](SECURITY.md) | reporting a vulnerability, scope, supported versions, hardening checklist |
+| [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md) | assets, adversaries, trust boundaries, residual risk, known gaps |
+| [`docs/CRYPTO.md`](docs/CRYPTO.md) | primitives, key hierarchy, Noise NK, prologue binding, framing, test vectors |
+| [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | wire formats, stream v1/v2, peer discovery, limits, compatibility |
+| [SURFACE Browser](https://github.com/krondevs/surface-browser) | official Chromium/Electron desktop browser with the client embedded (separate repository) |
 
 ---
 
@@ -167,8 +183,9 @@ template, already preconfigured with the public node list:
 The generated file includes one example service (`apix24`, target `127.0.0.1:5000`); edit or remove it
 to match your local services (see below).
 
-### 3. Browser (Firefox)
+### 3. Browser
 
+Any browser can use the local SOCKS5/HTTP proxy. In Firefox, for example:
 Settings → Network Settings → Manual proxy configuration:
 
 - **SOCKS5** host `127.0.0.1`, port `9252`
@@ -182,6 +199,34 @@ Now `http://example.com` goes out through your node, and
 > certificates are needed because `.surface` traffic is end-to-end encrypted. For a closed network,
 > set `node_auth: "pinned"` and `tls_skip_verify: false`; the trusted certificate bundle is embedded
 > in the binary and can also be extracted to `tls_ca_file`.
+
+#### SURFACE Browser (desktop)
+
+[![SURFACE Browser](https://raw.githubusercontent.com/krondevs/surface-browser/main/docs/screenshot.png)](https://github.com/krondevs/surface-browser)
+
+**[SURFACE Browser](https://github.com/krondevs/surface-browser)** is the official desktop client,
+maintained as a separate MIT project in
+[`krondevs/surface-browser`](https://github.com/krondevs/surface-browser). It is a Chromium
+(Electron + TypeScript) shell built for this network:
+
+- embeds `surface-client.exe`, starts it hidden and waits for the local proxy on `127.0.0.1:9252`,
+- routes `.surface` names and clearnet through the local client, with HTTP/3, DNS prefetch and
+  non-proxied WebRTC UDP disabled,
+- shows a dedicated `.surface` lock for pages protected by the Noise E2E channel,
+- ships as a single portable Windows `.exe` and keeps the proxy running after the browser closes.
+
+It expects a client payload built from this repository:
+
+```bash
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+  go build -trimpath -ldflags "-s -w" -o dist/surface-windows-amd64.exe .
+SURFACE_CLIENT_BIN=/path/to/surface-windows-amd64.exe npm run payload   # in surface-browser
+```
+
+See the [browser README](https://github.com/krondevs/surface-browser#readme) for requirements,
+environment variables and packaging, and its
+[security policy](https://github.com/krondevs/surface-browser/blob/main/SECURITY.md) for browser
+scope. The browser is a separate attack surface; report browser issues in that repository.
 
 ### 4. Android (Termux)
 
@@ -588,7 +633,9 @@ agent.go             agent role: identities, registration, reverse tunnels
 client.go proxy.go socks5.go httpproxy.go exit.go  local proxy and forwarding
 health.go assets.go  health endpoint and embedded assets
 surface_test.go e2e_test.go  unit, end-to-end and crypto tests
-install/termux/      Termux installer (install.sh, start.sh, uninstall.sh)
+docs/                threat model, cryptography and wire protocol
+SECURITY.md          vulnerability reporting, scope and hardening checklist
+scripts/             build.sh, build-android.sh
 ```
 
 ---
@@ -605,5 +652,5 @@ install/termux/      Termux installer (install.sh, start.sh, uninstall.sh)
 
 ## License
 
-MIT. If you use this project, add a `LICENSE` file with the corresponding text. Contributions and
-issues are welcome.
+MIT. See [`LICENSE`](LICENSE). Contributions and issues are welcome; please read
+[`SECURITY.md`](SECURITY.md) before reporting a vulnerability.

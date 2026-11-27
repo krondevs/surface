@@ -75,5 +75,5 @@ func (p *ProxyServer) handleSOCKS5(client net.Conn, reader *bufio.Reader) {
 		return
 	}
 	client.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
-	pipe(&connReader{Conn: client, r: reader}, upstream)
+	pipeMetered(&connReader{Conn: client, r: reader}, upstream, p.meter, trafficClassForHost(host))
 }

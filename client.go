@@ -51,7 +51,7 @@ func runClientWithDiscovery(ctx context.Context, s *Settings, logger *log.Logger
 	}()
 
 	for {
-		proxy := NewProxyServer(s.ProxyListen, dialer, logger)
+		proxy := NewProxyServer(s.ProxyListen, dialer, logger, nil)
 		err := proxy.Start(sessionCtx)
 		if ctx.Err() != nil {
 			break

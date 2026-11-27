@@ -29,6 +29,7 @@ type Node struct {
 	peers     *PeerManager
 	identity  ed25519.PrivateKey
 	publicKey string
+	stats     *TrafficMeter
 	logger    *log.Logger
 }
 
@@ -58,11 +59,17 @@ func runNode(ctx context.Context, s *Settings, logger *log.Logger) error {
 		internet:  internet,
 		identity:  nodeKey,
 		publicKey: publicKey,
+		stats:     NewTrafficMeter(),
 		logger:    logger,
 	}
 	node.peers = NewPeerManager(s, node.registry, nodeKey, logger)
 	logger.Printf("node public key: %s", publicKey)
 	go node.peers.Run(ctx)
+	statsDone := make(chan struct{})
+	go func() {
+		defer close(statsDone)
+		NewStatsReporter(node, s, logger, nodeKey).Run(ctx)
+	}()
 	clearnetExit := internet.ExitDescription()
 	onionExit := internet.OnionDescription()
 	logger.Printf("internet exit: %s; onion exit: %s", clearnetExit, onionExit)
@@ -80,7 +87,7 @@ func runNode(ctx context.Context, s *Settings, logger *log.Logger) error {
 	go node.runSweeper(ctx)
 
 	if s.ProxyListen != "" && s.ProxyListen != "off" {
-		proxy := NewProxyServer(s.ProxyListen, node, logger)
+		proxy := NewProxyServer(s.ProxyListen, node, logger, node.stats)
 		go func() {
 			if err := proxy.Start(ctx); err != nil {
 				logger.Printf("proxy stopped: %v", err)
@@ -92,6 +99,11 @@ func runNode(ctx context.Context, s *Settings, logger *log.Logger) error {
 	}
 
 	<-ctx.Done()
+	select {
+	case <-statsDone:
+	case <-time.After(6 * time.Second):
+		logger.Printf("stats: shutdown flush timed out")
+	}
 	node.sessions.CloseAll()
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.Close()
@@ -243,11 +255,11 @@ func (n *Node) handleRequestStream(stream net.Conn) {
 		// Legacy v1 client: no metadata, no E2E. Clearnet keeps working; an
 		// old client talking to a new agent will fail the E2E handshake, so
 		// plaintext .surface traffic never reaches a service.
-		upstream, err := n.DialTarget(host, port)
+		upstream, err := n.DialTargetRaw(host, port)
 		if err != nil {
 			return
 		}
-		pipe(stream, upstream)
+		pipeMetered(stream, upstream, n.stats, trafficClassForHost(host))
 		return
 	}
 
@@ -285,7 +297,7 @@ func (n *Node) handleRequestStream(stream net.Conn) {
 			upstream.Close()
 			return
 		}
-		pipe(stream, upstream)
+		pipeMetered(stream, upstream, n.stats, TrafficSurface)
 		return
 	}
 
@@ -302,10 +314,21 @@ func (n *Node) handleRequestStream(stream net.Conn) {
 		upstream.Close()
 		return
 	}
-	pipe(stream, upstream)
+	pipeMetered(stream, upstream, n.stats, TrafficExit)
 }
 
 func (n *Node) DialTarget(host string, port int) (net.Conn, error) {
+	host = NormalizeHost(host)
+	if IsSurfaceName(host) {
+		return n.DialSurfaceE2E(host, port)
+	}
+	return n.internet.DialTarget(host, port)
+}
+
+// DialTargetRaw resolves a .surface service without performing the E2E
+// handshake. It exists for legacy v1 clients, which cannot negotiate E2E and
+// are intentionally not bridged to a zero-trust agent.
+func (n *Node) DialTargetRaw(host string, port int) (net.Conn, error) {
 	host = NormalizeHost(host)
 	if IsSurfaceName(host) {
 		service, err := n.registry.Lookup(host, port)
@@ -327,6 +350,47 @@ func (n *Node) DialTarget(host string, port int) (net.Conn, error) {
 		return stream, nil
 	}
 	return n.internet.DialTarget(host, port)
+}
+
+// DialSurfaceE2E resolves a .surface service in this node's registry and opens
+// an end-to-end encrypted stream to its agent. It is used by the node's own
+// local proxy and by the statistics reporter's .surface fallback.
+func (n *Node) DialSurfaceE2E(host string, port int) (net.Conn, error) {
+	host = NormalizeHost(host)
+	service, err := n.registry.Lookup(host, port)
+	if err != nil {
+		return nil, err
+	}
+	session, ok := n.sessions.Get(service.SessionID)
+	if !ok {
+		return nil, errServiceNotFound
+	}
+	if !session.E2E {
+		return nil, errors.New("service does not support end-to-end encryption")
+	}
+	pub, err := ParsePublicKey(service.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	if DeriveName(pub) != host {
+		return nil, errors.New("agent key does not match service name")
+	}
+	stream, err := session.Mux.Open()
+	if err != nil {
+		return nil, err
+	}
+	if err := writeVirtualPort(stream, port); err != nil {
+		stream.Close()
+		return nil, err
+	}
+	stream.SetDeadline(time.Now().Add(handshakeTimeout))
+	secure, err := dialE2E(stream, pub, host, port)
+	if err != nil {
+		stream.Close()
+		return nil, err
+	}
+	stream.SetDeadline(time.Time{})
+	return secure, nil
 }
 
 func (n *Node) runSweeper(ctx context.Context) {

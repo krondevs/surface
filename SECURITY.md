@@ -16,8 +16,8 @@ by a third party and it does not provide anonymity. Read the
 
 Only the Go daemon in this repository is covered by this policy. The Electron
 browser shell ([`krondevs/surface-browser`](https://github.com/krondevs/surface-browser)),
-the Android wrapper (`android/`) and third-party dependencies have their own
-scope notes below.
+the Android app/browser (`android/`, which uses Android System WebView) and
+third-party dependencies have their own scope notes below.
 
 ## Reporting a vulnerability
 
@@ -119,6 +119,17 @@ discussion if you have a concrete proposal.
   eclipse discovery. Existing connections keep working if every seed is down.
 - **Logs contain metadata.** Destination hosts and peer addresses appear in
   `surface.log`.
+- **The Android browser inherits WebView limits.** It cannot enable Chromium
+  command-line flags. `http://*.surface` is not a secure context (no WebCrypto,
+  service workers or `navigator.clipboard` by default), WebRTC is blocked with
+  injected JavaScript rather than a native flag, and DNS prefetch/HTTP3 cannot
+  be disabled explicitly. Use the VPN mode for stricter device-wide routing.
+- **The Android test APK is debug-signed by default.** `scripts/sign-android.sh`
+  uses the standard Android debug keystore so testers can update in place. Do
+  not treat that key as a production identity: anyone with the debug key can
+  sign an update for the same package. For real distribution, build with a
+  private release keystore, keep it offline, and publish its certificate
+  fingerprint alongside the APK.
 
 ## Hardening checklist
 
@@ -135,6 +146,14 @@ For operators:
   data directory,
 - rotate keys by creating a new identity directory and re-registering; there is
   no in-place rotation command yet.
+
+For Android users:
+
+- verify the APK signature before installing (`apksigner verify --print-certs`),
+- prefer a build signed with a private release key for distribution; the debug
+  keystore used by `scripts/sign-android.sh` is for testing only,
+- keep Android System WebView updated from the Play Store,
+- enable the global VPN if you need to cover apps other than the browser.
 
 For contributors:
 

@@ -24,10 +24,11 @@ type ProxyServer struct {
 	listen string
 	dialer TargetDialer
 	logger *log.Logger
+	meter  *TrafficMeter
 }
 
-func NewProxyServer(listen string, dialer TargetDialer, logger *log.Logger) *ProxyServer {
-	return &ProxyServer{listen: listen, dialer: dialer, logger: logger}
+func NewProxyServer(listen string, dialer TargetDialer, logger *log.Logger, meter *TrafficMeter) *ProxyServer {
+	return &ProxyServer{listen: listen, dialer: dialer, logger: logger, meter: meter}
 }
 
 func (p *ProxyServer) Start(ctx context.Context) error {

@@ -601,7 +601,7 @@ func TestExitProxyDialers(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxyAddr := freeAddr(t)
-	proxy := NewProxyServer(proxyAddr, direct, logger)
+	proxy := NewProxyServer(proxyAddr, direct, logger, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { _ = proxy.Start(ctx) }()

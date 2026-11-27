@@ -22,3 +22,6 @@ Related material outside this directory:
   [security policy](https://github.com/krondevs/surface-browser/blob/main/SECURITY.md).
   It is published from its own repository; a local checkout can be kept in
   `surface-browser/`, which is not part of this repository.
+- The Android all-in-one app (`android/`) — WebView-based browser plus the
+  embedded Go client, built and signed as
+  `surface-android-arm64-release-debugsigned.apk`.

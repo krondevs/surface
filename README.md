@@ -115,40 +115,68 @@ configura el cliente zero-trust, instala el autostart de Termux:Boot y arranca e
 - Log: `tail -f ~/.surface/surface.log`
 - Actualizar o reinstalar: vuelve a ejecutar el mismo comando.
 
-## Instalación en Android (APK)
+## Instalación en Android (APK todo en uno)
 
-La forma fiable de mantener el proxy corriendo en Android es una **app con servicio en
-primer plano** (foreground service). Un binario suelto en Termux muere cuando Android
-aplica Doze o cuando se desliza Termux de "recientes"; un foreground service con
-notificación persistente no.
+El APK de Android es **una sola app**: incluye el cliente SURFACE y un navegador
+basado en el WebView del sistema. No hace falta instalar un proxy aparte ni configurar
+el proxy a mano.
 
-El wrapper (`android/`) empaqueta el binario `surface-android-arm64` y lo ejecuta como
-servicio en primer plano. La app permite iniciar/detener el proxy, ver la clave pública
-del dispositivo y editar la lista de nodos.
+- Al abrir la app arranca el cliente Go embebido como **servicio en primer plano** y
+  espera a que `127.0.0.1:9252` esté listo.
+- El navegador aplica el proxy a todos sus WebView con `ProxyController`; tanto
+  clearnet como `*.surface` salen por SURFACE.
+- Incluye pestañas, marcadores, historial, buscar en página, zoom, descargas a través
+  del proxy, modo escritorio, menú contextual, permisos, subida de archivos y vídeo
+  a pantalla completa.
+- Los nombres `.surface` muestran un candado propio. El transporte es el canal Noise
+  E2E; el esquema puede ser HTTP.
+- Ajustes permite gestionar nodos, ver la clave pública, activar la VPN global,
+  mantener el proxy al cerrar, bloquear WebRTC, borrar datos y compartir el registro.
 
-- Proxy: **SOCKS5/HTTP `127.0.0.1:9252`** — activa **"Proxy DNS when using SOCKS v5"** en el navegador.
-- El APK se compila en CI (GitHub Actions) sin necesidad de Android SDK local.
+El APK se compila en CI (GitHub Actions) sin necesidad de Android SDK local.
 
-### Compilar el APK
+### Compilar y firmar el APK
 
-**Vía CI (recomendado, sin SDK local):** sube un tag `v*` o lanza el workflow
-`Android APK` manualmente desde la pestaña *Actions*. El APK queda como artefacto y,
-si es un tag, adjunto al release.
+**Vía CI:** sube un tag `v*` o lanza el workflow `Android APK` manualmente desde la
+pestaña *Actions*. El workflow compila, firma y publica
+`surface-android-arm64-release-debugsigned.apk`.
 
-**Localmente** (requiere JDK 17 + Android SDK):
+**Localmente** (requiere JDK 17+ y Android SDK):
 
 ```bash
-./scripts/build-android.sh          # compila el binario Go a android/app/src/main/jniLibs/
-cd android && ./gradlew assembleRelease
-# APK en android/app/build/outputs/apk/release/
+./scripts/build-android.sh                 # binario Go -> jniLibs/arm64-v8a/libsurface.so
+cd android && ./gradlew assembleRelease    # APK release sin firmar
+cd ..
+./scripts/sign-android.sh                  # firma -> dist/surface-android-arm64-release-debugsigned.apk
 ```
 
-### Notas
+El script usa `~/.android/debug.keystore` por defecto. Para actualizar sobre un APK ya
+instalado hay que firmar con la **misma clave**; el keystore de debug que Gradle genera
+en cada runner de CI es distinto, así que en CI se pasa
+`ANDROID_DEBUG_KEYSTORE_B64` como secreto. Para distribución real conviene un keystore
+release propio (ver aviso en [SECURITY.md](SECURITY.md)).
 
-- El binario va en `jniLibs/arm64-v8a/libsurface.so` (arm64). Para añadir `armeabi-v7a`
-  o `x86_64`, ajusta `SURFACE_ANDROID_ABIS` en `scripts/build-android.sh` (requieren cgo).
-- La clave privada del cliente se guarda en el almacenamiento interno de la app
-  (`filesDir/keys/client.key`) y no se respalda (`allowBackup="false"`).
+### Notas y límites
+
+- El motor es **Android System WebView** (Chromium del sistema); la app no empaqueta
+  Chromium. El APK ronda los 13–20 MB.
+- `WebViewFeature.PROXY_OVERRIDE` requiere WebView 74+ (Android 5+ con WebView
+  actualizado); la app lo comprueba en runtime y muestra un aviso si no está
+  disponible. Recomendamos Android 7+ para una experiencia fluida.
+- WebView no permite activar `isSecureContext` para `http://*.surface`: WebCrypto,
+  service workers y `navigator.clipboard` pueden no funcionar en esos orígenes. El
+  candado `.surface` sigue indicando el canal E2E real.
+- El bloqueo de WebRTC se hace inyectando JavaScript; es una mitigación, no el flag
+  nativo de Chromium. Para modo estricto, usa la VPN global.
+- Las descargas se hacen con OkHttp a través del proxy; no se usa `DownloadManager`
+  porque se saltaría SURFACE.
+- El release es `arm64-v8a`. Para probar en un emulador x86_64:
+  `SURFACE_ANDROID_ABIS="x86_64:amd64" ./scripts/build-android.sh` y luego
+  `cd android && ./gradlew assembleDebug -PsurfaceAbis=x86_64`.
+- La clave privada del cliente y los datos del navegador viven en el almacenamiento
+  interno de la app (`allowBackup="false"`).
+- En Android 15, el foreground service `dataSync` tiene límite de tiempo si se sube
+  `targetSdk` a 35; habría que evaluar `specialUse` o el modo VPN.
 - El arranque automático al encender el dispositivo (receptor `BOOT_COMPLETED`) queda
   como mejora futura.
 
@@ -342,6 +370,51 @@ default — the CLI subcommand always wins. If `settings.json` is absent, the bi
 | `onion_proxy` | `socks5://127.0.0.1:9050` | Tor SOCKS5 used **only** for `.onion`; `off`/`none` disables onion routing |
 | `heartbeat_timeout_seconds` | `45` | Session timeout |
 | `allowed_agents` | `[]` | Static agent allowlist (`[]` = open registration) |
+| `stats_enabled` | `true` | Publish relay statistics to the official site |
+| `stats_nickname` | `""` | Optional public operator nickname; falls back to the key-derived name |
+| `stats_urls` | official site + `.surface` fallback | Ordered list of ingest endpoints |
+| `stats_interval_seconds` | `60` | Reporting interval |
+| `stats_proxy` | `""` | Optional HTTP/SOCKS5 proxy used for the `.surface` fallback |
+
+### Node statistics and community status
+
+A node in the `node` role reports the payload bytes it relays to
+`https://surfaceproject.org/trafic` every 60 seconds, with a fallback to
+`http://surfai3ay34nlklg.surface/trafic`. Reporting is enabled by default and can
+be disabled with `"stats_enabled": false`.
+
+The node key is the canonical identity. The nickname and IP are optional
+display metadata; setting them makes the node easier to identify:
+
+```json
+{
+  "stats_enabled": true,
+  "stats_nickname": "my-node",
+  "advertise_addr": "203.0.113.10:9253",
+  "stats_urls": [
+    "https://surfaceproject.org/trafic",
+    "http://surfai3ay34nlklg.surface/trafic"
+  ]
+}
+```
+
+The site stores the node public key, nickname, first/last public IP, relayed
+traffic totals and online time. The list shows a masked IP; the node detail
+shows the full IP and whether it was observed by the server or self-reported.
+The nickname is a display label, not the node's identity: the canonical name is
+the `.surface` address derived from the node key. A missing nickname falls back
+to that derived name, and a missing IP is shown as `—`; neither prevents the
+node from appearing in the ranking.
+
+The `.surface` fallback is resolved through the node's own Surface registry and
+opens an end-to-end encrypted stream to the site agent. If the site agent is not
+registered on that node, the fallback fails and the reporter keeps using the
+primary endpoint; cumulative counters mean the next successful report includes
+any missed interval.
+
+Statistics are self-reported. The ed25519 signature proves which node sent the
+sample, not that the traffic is real. See [`page/README.md`](page/README.md) for
+the server, storage, API and deployment details.
 
 ### Internet exit: clearnet and onion routing
 
@@ -631,9 +704,11 @@ multinode.go        multi-node pool, selection strategies, failover
 node.go              node role: listener, routing, internet exit
 agent.go             agent role: identities, registration, reverse tunnels
 client.go proxy.go socks5.go httpproxy.go exit.go  local proxy and forwarding
+stats.go stats_reporter.go  relay counters and signed node statistics reporting
 health.go assets.go  health endpoint and embedded assets
 surface_test.go e2e_test.go  unit, end-to-end and crypto tests
 docs/                threat model, cryptography and wire protocol
+page/                official site, /nodes dashboard and stats collector
 SECURITY.md          vulnerability reporting, scope and hardening checklist
 scripts/             build.sh, build-android.sh
 ```

@@ -25,7 +25,7 @@ func (p *ProxyServer) handleHTTP(client net.Conn, reader *bufio.Reader) {
 			upstream.Close()
 			return
 		}
-		pipe(&connReader{Conn: client, r: reader}, upstream)
+		pipeMetered(&connReader{Conn: client, r: reader}, upstream, p.meter, trafficClassForHost(host))
 		return
 	}
 
@@ -46,10 +46,13 @@ func (p *ProxyServer) handleHTTP(client net.Conn, reader *bufio.Reader) {
 	request.RequestURI = ""
 	request.URL.Scheme = ""
 	request.URL.Host = ""
-	if err := request.Write(upstream); err != nil {
+	class := trafficClassForHost(targetHost)
+	bodyWriter := &countingWriter{w: upstream, meter: p.meter, class: class}
+	if err := request.Write(bodyWriter); err != nil {
 		return
 	}
-	io.Copy(client, upstream)
+	n, _ := io.Copy(client, upstream)
+	p.meter.Add(class, false, n)
 }
 
 func splitHostPort(host string, defaultPort int) (string, int) {

@@ -55,6 +55,17 @@ type Settings struct {
 	HeartbeatSecond int               `json:"heartbeat_seconds"`
 	ClientKeyFile   string            `json:"client_key_file"`
 	Aliases         map[string]string `json:"aliases"`
+
+	StatsEnabled         bool     `json:"stats_enabled"`
+	StatsNickname        string   `json:"stats_nickname"`
+	StatsURLs            []string `json:"stats_urls"`
+	StatsIntervalSeconds int      `json:"stats_interval_seconds"`
+	StatsProxy           string   `json:"stats_proxy"`
+}
+
+var defaultStatsURLs = []string{
+	"https://surfaceproject.org/trafic",
+	"http://surfai3ay34nlklg.surface/trafic",
 }
 
 var defaultSeedNodes = []string{
@@ -87,6 +98,10 @@ func defaultSettings() *Settings {
 		PeerRefreshSeconds:      300,
 		PeerMax:                 64,
 		PeerCacheFile:           "keys/peers.json",
+
+		StatsEnabled:         true,
+		StatsURLs:            append([]string(nil), defaultStatsURLs...),
+		StatsIntervalSeconds: 60,
 	}
 }
 
@@ -154,6 +169,12 @@ func (s *Settings) applyDefaults() {
 	}
 	if s.PeerCacheFile == "" {
 		s.PeerCacheFile = d.PeerCacheFile
+	}
+	if s.StatsURLs == nil {
+		s.StatsURLs = append([]string(nil), d.StatsURLs...)
+	}
+	if s.StatsIntervalSeconds <= 0 {
+		s.StatsIntervalSeconds = d.StatsIntervalSeconds
 	}
 }
 
